@@ -107,6 +107,12 @@ export function interpret(text, res, ctx = {}) {
     if (!isQuestion) return { kind: 'nofact', app: appIds[0], html: `I understood this is about ${appLink(appIds[0])} but couldn't pick out a specific fact. Try e.g. <i>"${appIds[0]} has found a 500 sq ft ground-floor rented shop"</i> or <i>"${appIds[0]} can now invest 35 lakh"</i>.` };
   }
 
+  // A statement that sounds like new information but names no ID ("the Hubli lady got her loan, 32 lakh") goes to the AI parser;
+  // the rule-based reading stays as the fallback.
+  if (!isQuestion && !appIds.length && !tIds.length && !ctx.noJudge && /\d|\bnow\b|found|sanction|withdr|moved|signed|\bgot\b|lost|dropp|backed out|agreed/.test(t)) {
+    const det = interpret(text, res, { ...ctx, noJudge: true });
+    return { kind: 'fallback', html: det.html, question: false };
+  }
   // Judgement questions ("riskiest", "should we", "recommend") go to the AI first; the rule answer is the fallback.
   const judge = /\b(risk|risky|riskiest|safest|best|worst|should|recommend|strongest|weakest|advice|concern|worr|trade-?off|which one|would you|opinion|suggest)\w*/.test(t);
   if (judge && isQuestion && !ctx.noJudge) {
