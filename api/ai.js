@@ -12,6 +12,7 @@ const PARSE = `Convert a franchise expansion team's message into a JSON update. 
 {"target":"APP-xxx or TER-xx or null","fields":{...},"understood":"short English summary","ambiguous":"question to ask, or null"}
 Allowed application fields: investment (number in ₹ LAKH exactly as stated — "32 lakh" => 32, "1.5 crore" => 150; never convert lakh to thousands), experience (years), space ("Owned"|"Rented"|"Identified"|"Not yet identified"), size (sq ft), floor ("Ground"|"Upper"|"Mall unit"|"Not known"), pin (6-digit string), city, launch (months), language ("Kannada"|"English"|"Hindi"), withdrawn (true/false).
 Allowed territory fields: slots (integer), priority ("High"|"Medium"|"Low").
+Pick the target by matching the person described (name, city, business) against the Known records. If more than one record could fit, or none fits clearly, set target null and ask in "ambiguous".
 Include ONLY facts explicitly stated. Never guess size, tenure or pin. "found a shop" without owned/rented => space "Identified".`;
 
 async function gemini(input) {
@@ -36,7 +37,7 @@ export default async function handler(req, res) {
   const { mode, question, records, territories, config, ids } = req.body || {};
   if (!question || String(question).length > 1500) return res.status(400).json({ error: 'Bad question' });
   if (mode === 'parse') {
-    const out = await gemini(`${PARSE}\n\nKnown IDs: ${(ids || []).slice(0, 400).join(', ')}\n\nMessage: ${question}`);
+    const out = await gemini(`${PARSE}\n\nKnown records (one per line: ID = name, city pin, business):\n${(ids || []).slice(0, 400).join("\n")}\n\nMessage: ${question}`);
     if (!out) return res.status(502).json({ error: 'AI unavailable' });
     const m = out.match(/\{[\s\S]*\}/);
     try { return res.status(200).json({ parsed: JSON.parse(m[0]) }); } catch { return res.status(200).json({ parsed: null }); }
