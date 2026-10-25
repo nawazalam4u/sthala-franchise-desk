@@ -10,7 +10,7 @@ Plain text, under 120 words, cite application IDs like APP-007.`;
 
 const PARSE = `Convert a franchise expansion team's message into a JSON update. Output ONLY JSON, no prose:
 {"target":"APP-xxx or TER-xx or null","fields":{...},"understood":"short English summary","ambiguous":"question to ask, or null"}
-Allowed application fields: investment (number, ₹ lakh; 1 crore = 100), experience (years), space ("Owned"|"Rented"|"Identified"|"Not yet identified"), size (sq ft), floor ("Ground"|"Upper"|"Mall unit"|"Not known"), pin (6-digit string), city, launch (months), language ("Kannada"|"English"|"Hindi"), withdrawn (true/false).
+Allowed application fields: investment (number in ₹ LAKH exactly as stated — "32 lakh" => 32, "1.5 crore" => 150; never convert lakh to thousands), experience (years), space ("Owned"|"Rented"|"Identified"|"Not yet identified"), size (sq ft), floor ("Ground"|"Upper"|"Mall unit"|"Not known"), pin (6-digit string), city, launch (months), language ("Kannada"|"English"|"Hindi"), withdrawn (true/false).
 Allowed territory fields: slots (integer), priority ("High"|"Medium"|"Low").
 Include ONLY facts explicitly stated. Never guess size, tenure or pin. "found a shop" without owned/rented => space "Identified".`;
 
