@@ -68,7 +68,12 @@ export function normNum(v) {
   if (typeof v === 'number') return { value: Number.isFinite(v) ? v : NaN, raw: String(v) };
   let t = low(v).replace(/[₹,]/g, '').replace(/\brs\.?/g, '').trim();
   const m = t.match(/-?\d+(\.\d+)?/);
-  if (!m) return { value: NaN, raw: s(v) };
+  if (!m) {
+    const w = t.match(/\b(zero|nil|none|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty)\b/);
+    if (!w) return { value: NaN, raw: s(v) };
+    const n = { zero: 0, nil: 0, none: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20 }[w[1]];
+    return { value: /crore/.test(t) ? n * 100 : n, raw: s(v) };
+  }
   let n = parseFloat(m[0]);
   if (/crore|cr\b/.test(t)) n *= 100;
   return { value: n, raw: s(v) };
@@ -127,7 +132,7 @@ export function normaliseApplication(r) {
   const pin = normPin(r.pin), inv = normNum(r.investment), exp = normNum(r.experience),
     size = normNum(r.size), launch = normNum(r.launch);
   return {
-    id: s(r.id).toUpperCase(), name: s(r.name), row: r.row,
+    id: s(r.id).toUpperCase() || `ROW-${r.row ?? '?'}`, idMissing: !s(r.id), name: s(r.name), row: r.row,
     cityRaw: s(r.city), city: normCity(r.city), stateRaw: s(r.state),
     pin: pin.pin, pinRaw: pin.raw,
     investment: inv.value, investmentRaw: inv.raw,
@@ -257,7 +262,8 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
     dataIssues.push({ sev: 'high', scope: 'territory', ref: ts.map(t => t.id).join(' & '), text: `Pin ${p} is listed in more than one territory — applications there are held until the brand fixes the territory map.` });
 
   const idCount = {};
-  apps.forEach(a => { if (a.id) idCount[a.id] = (idCount[a.id] || 0) + 1; });
+  const baseId = a => a.idOriginal || a.id;
+  apps.forEach(a => { if (!a.idMissing) idCount[baseId(a)] = (idCount[baseId(a)] || 0) + 1; });
   const nameKey = a => `${low(a.name)}|${a.pin}`;
   const nameCount = {};
   apps.forEach(a => { if (a.name) nameCount[nameKey(a)] = (nameCount[nameKey(a)] || 0) + 1; });
@@ -267,8 +273,8 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
     const r = { app: a, idx, issues: [], facts: [], flags: [], notes: readNotes(a), gates: {}, territory: null, store: null };
     const add = (gate, sev, code, text, ask) => r.issues.push({ gate, sev, code, text, ask });
     if (a.withdrawn) { r.outcome = 'WITHDRAWN'; r.gates = { location: 'n/a', partner: 'n/a', site: 'n/a' }; return r; }
-    if (!a.id) add('data', 'block', 'NO_ID', `Row ${a.row} has no Application ID.`, 'Assign an Application ID.');
-    if (a.id && idCount[a.id] > 1) add('data', 'block', 'DUP_ID', `Application ID ${a.id} appears ${idCount[a.id]} times.`, 'Confirm which row is current; remove the duplicate.');
+    if (a.idMissing) add('data', 'block', 'NO_ID', `Row ${a.row} has no Application ID (shown here as ${a.id}).`, 'Assign an Application ID.');
+    if (!a.idMissing && idCount[baseId(a)] > 1) add('data', 'block', 'DUP_ID', `Application ID ${baseId(a)} appears ${idCount[baseId(a)]} times (this is row ${a.row}).`, 'Confirm which row is current; remove the duplicate.');
     if (a.name && a.pin && nameCount[nameKey(a)] > 1) r.flags.push({ code: 'POSSIBLE_DUPLICATE', text: `Another application has the same name and pin (${a.name}, ${a.pin}) — possible duplicate submission.` });
 
     // Location gate

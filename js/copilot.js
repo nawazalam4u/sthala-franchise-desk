@@ -11,7 +11,15 @@ const ids = text => [...new Set((text.match(/\b(?:app)[\s-]?0*(\d{1,4})\b/gi) ||
 export function resolveIds(text, res) {
   const nums = ids(text);
   const known = res.recs.map(r => r.app.id);
-  return nums.map(n => known.find(k => k.replace(/\D/g, '').replace(/^0+/, '') === n.replace(/^0+/, '')) || `APP-${n.padStart(3, '0')}`);
+  const found = nums.map(n => known.find(k => k.replace(/\D/g, '').replace(/^0+/, '') === n.replace(/^0+/, '')) || `APP-${n.padStart(3, '0')}`);
+  if (found.length) return found;
+  // fall back to names: "Priya now has 30 lakh" — full name first, then a first name that is unique
+  const t = ' ' + text.toLowerCase().replace(/[^a-z\u0080-\uffff ]/g, ' ') + ' ';
+  const full = res.recs.filter(r => r.app.name && t.includes(' ' + r.app.name.toLowerCase() + ' '));
+  if (full.length === 1) return [full[0].app.id];
+  const first = res.recs.filter(r => { const f = (r.app.name || '').toLowerCase().split(' ')[0]; return f.length > 2 && t.includes(' ' + f + ' '); });
+  const uniq = [...new Set(first.map(r => (r.app.name || '').toLowerCase().split(' ')[0]))];
+  return first.length && uniq.length === 1 && first.length === 1 ? [first[0].app.id] : [];
 }
 const terIds = (text, res) => [...new Set((text.match(/\bter[\s-]?0*(\d{1,3})\b/gi) || []).map(m => m.replace(/\D/g, '').replace(/^0+/, '')))]
   .map(n => res.territories.find(t => t.id.replace(/\D/g, '').replace(/^0+/, '') === n)?.id).filter(Boolean);
@@ -96,7 +104,7 @@ export function interpret(text, res, ctx = {}) {
     if (!rec) return { kind: 'answer', html: `I can't find <b>${esc(appIds[0])}</b> in this workbook.` };
     const { patch, said } = extractAppPatch(q, rec.app);
     if (said.length) return { kind: 'update', app: appIds[0], patch, said, whatIf };
-    if (!isQuestion) return { kind: 'answer', html: `I understood this is about ${appLink(appIds[0])} but couldn't pick out a specific fact. Try e.g. <i>"${appIds[0]} has found a 500 sq ft ground-floor rented shop"</i> or <i>"${appIds[0]} can now invest 35 lakh"</i>.` };
+    if (!isQuestion) return { kind: 'nofact', app: appIds[0], html: `I understood this is about ${appLink(appIds[0])} but couldn't pick out a specific fact. Try e.g. <i>"${appIds[0]} has found a 500 sq ft ground-floor rented shop"</i> or <i>"${appIds[0]} can now invest 35 lakh"</i>.` };
   }
 
   // Questions
