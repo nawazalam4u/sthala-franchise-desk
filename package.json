@@ -1,0 +1,6 @@
+{
+  "name": "sthala",
+  "private": true,
+  "type": "module",
+  "dependencies": { "@anthropic-ai/sdk": "^1.1.0" }
+}
