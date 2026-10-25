@@ -575,7 +575,8 @@ async function ask(text) {
     const bub = say('ai', '<span class="typing">Thinking</span>');
     if (S.ai) {
       const parsed = out.question ? null : await aiParse(text);
-      if (parsed) { bub.remove(); return applyUpdate(parsed, '✦ AI understood an update'); }
+      if (parsed?.ambiguous) { bub.remove(); return; }
+      if (parsed) { bub.remove(); return applyUpdate(parsed, `✦ AI matched this to ${esc(parsed.who)} — check it's the right person (undo if not)`); }
       if (out.kind === 'fallback') {
         const ans = await aiAnswer(text);
         if (ans) { bub.innerHTML = `${ans}<div class="src">✦ Gemini, grounded in this session's records · rules are enforced in code, not by the AI</div>`; return; }
@@ -590,13 +591,18 @@ async function ask(text) {
 const APP_FIELDS = { investment: 'number', experience: 'number', size: 'number', launch: 'number', space: ['Owned', 'Rented', 'Identified', 'Not yet identified'], floor: ['Ground', 'Upper', 'Mall unit', 'Not known'], language: ['Kannada', 'English', 'Hindi'], pin: 'pin', city: 'city', withdrawn: 'bool' };
 async function aiParse(text) {
   try {
-    const r = await fetch('/api/ai', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'parse', question: text, ids: [...S.res.recs.map(r => `${r.app.id} (${r.app.name})`), ...S.res.territories.map(t => t.id)] }) });
+    const r = await fetch('/api/ai', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mode: 'parse', question: text, ids: [...S.res.recs.map(r => `${r.app.id} = ${r.app.name}, ${r.app.city || r.app.cityRaw || '?'} ${r.app.pin || ''}, business: ${(r.app.business || '—').slice(0, 60)}`), ...S.res.territories.map(t => `${t.id} = territory in ${t.city}`)] }) });
     if (!r.ok) return null;
     const p = (await r.json()).parsed;
-    if (!p?.target || !p.fields || p.ambiguous) { if (p?.ambiguous) say('ai', `🤔 ${esc(p.ambiguous)}`); return null; }
+    if (!p?.target || !p.fields || p.ambiguous) { if (p?.ambiguous) { say('ai', `🤔 ${esc(p.ambiguous)}`); return { ambiguous: true }; } return null; }
     const target = String(p.target).toUpperCase();
     const isTer = /^TER/.test(target);
-    if (isTer ? !S.res.territories.some(t => t.id === target) : !S.res.recs.some(x => x.app.id === target)) return null;
+    const rec = S.res.recs.find(x => x.app.id === target);
+    if (isTer ? !S.res.territories.some(t => t.id === target) : !rec) return null;
+    // Guardrail: if the message names a city, the matched applicant must be in that city.
+    const low = text.toLowerCase();
+    const named = Object.keys(CITIES).filter(c => [c, ...({ Bengaluru: ['bangalore'], Mysuru: ['mysore'], Mangaluru: ['mangalore'], 'Hubballi-Dharwad': ['hubli', 'hubballi', 'dharwad'], Belagavi: ['belgaum'], Tumakuru: ['tumkur'], Davanagere: ['davangere'] }[c] || [])].some(w => low.includes(w.toLowerCase())));
+    if (rec && named.length && !named.includes(rec.app.city) && !p.fields.city) { say('ai', `🛡 The AI matched this to ${rec.app.id} (${esc(rec.app.name)}, ${esc(rec.app.city)}), but you mentioned ${named.join('/')}. Not applied — please name the application ID.`); return { ambiguous: true }; }
     const patch = {}, said = [], rejected = [];
     // Guardrail: the AI may not invent numbers. Every number it returns must appear in the message itself
     // (crore values may appear ×100 as lakh).
@@ -614,7 +620,7 @@ async function aiParse(text) {
     }
     if (rejected.length) say('ai', `🛡 Ignored AI-extracted value(s) not found in your message: <b>${esc(rejected.join(', '))}</b>. Numbers are only accepted if you actually said them.`);
     if (!said.length) return null;
-    return { type: isTer ? 'ter' : 'app', id: target, patch, said, text, source: 'ai' };
+    return { type: isTer ? 'ter' : 'app', id: target, patch, said, text, source: 'ai', who: rec ? `${rec.app.id} · ${rec.app.name} (${rec.app.city || '—'}, ${rec.app.business || 'business not stated'})` : target };
   } catch { return null; }
 }
 async function aiAnswer(question) {
