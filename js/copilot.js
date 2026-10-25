@@ -107,6 +107,14 @@ export function interpret(text, res, ctx = {}) {
     if (!isQuestion) return { kind: 'nofact', app: appIds[0], html: `I understood this is about ${appLink(appIds[0])} but couldn't pick out a specific fact. Try e.g. <i>"${appIds[0]} has found a 500 sq ft ground-floor rented shop"</i> or <i>"${appIds[0]} can now invest 35 lakh"</i>.` };
   }
 
+  // Judgement questions ("riskiest", "should we", "recommend") go to the AI first; the rule answer is the fallback.
+  const judge = /\b(risk|risky|riskiest|safest|best|worst|should|recommend|strongest|weakest|advice|concern|worr|trade-?off|which one|would you|opinion|suggest)\w*/.test(t);
+  if (judge && isQuestion && !ctx.noJudge) {
+    const det = interpret(text, res, { ...ctx, noJudge: true });
+    return { kind: 'fallback', html: det.html, focus: det.focus, question: true };
+  }
+  if (/cannibal|overlap|catchment|too close|near(by)? (an |our )?(existing )?store/.test(t)) return { kind: 'answer', html: overlapAnswer(res) };
+
   // Questions
   if (appIds.length >= 2 && /compar|vs|versus|between|better/.test(t)) return { kind: 'answer', html: compare(appIds, res) };
   if (appIds.length) {
@@ -134,7 +142,7 @@ export function interpret(text, res, ctx = {}) {
   if (/score|weight|rank|how do you (decide|choose)|method|logic|assum/.test(t)) return { kind: 'answer', html: methodAnswer(res) };
   if (/summary|overview|status|how many|total/.test(t)) return { kind: 'answer', html: summary(res) };
   if (/data|issue|error|quality|problem/.test(t)) return { kind: 'answer', html: dataAnswer(res) };
-  return { kind: 'fallback', html: `I'm not sure what you mean. ${help(true)}` };
+  return { kind: 'fallback', html: `I'm not sure what you mean. ${help(true)}`, question: isQuestion };
 }
 
 // ---------- answers ----------
@@ -216,6 +224,16 @@ function listAnswer(outs, res) {
   const rs = res.recs.filter(r => outs.includes(r.outcome));
   return `<div class="ans-head">${outs.map(o => OUTCOMES[o].label).join(' / ')} — ${rs.length}</div>
   ${rs.length ? `<ul>${rs.map(r => `<li>${appLink(r.app.id)} ${esc(r.app.name)} — ${esc(r.decision.headline)}</li>`).join('')}</ul>` : '<p>None.</p>'}`;
+}
+
+function overlapAnswer(res) {
+  const rs = res.recs.filter(r => r.flags.some(f => /OVERLAP|CATCHMENT_UNKNOWN/.test(f.code)));
+  const close = rs.filter(r => r.flags.some(f => f.code === 'CATCHMENT_OVERLAP' || f.code === 'NEW_STORE_OVERLAP'));
+  const near = res.recs.filter(r => r.nearestStore && !close.includes(r)).sort((a, b) => a.nearestStore.km - b.nearestStore.km).slice(0, 4);
+  return `<div class="ans-head">Cannibalisation check (${res.config.overlapKm} km screen)</div>
+  ${close.length ? `<ul>${close.map(r => `<li>${appLink(r.app.id)} ${chip(r.outcome)} — ${esc(r.flags.find(f => /OVERLAP/.test(f.code)).text)}</li>`).join('')}</ul>` : `<p>No applicant is within ${res.config.overlapKm} km of an existing store or another shortlisted store.</p>`}
+  ${near.length ? `<p><b>Closest others:</b> ${near.map(r => `${appLink(r.app.id)} ~${r.nearestStore.km} km from ${r.nearestStore.store.id}`).join(' · ')}</p>` : ''}
+  <p class="muted">Distances use approximate pin-code centroids — a flag means "do a catchment visit before the LOI", not "reject". Same-pin cases are already blocked by the hard rule.</p>`;
 }
 
 function summary(res) {

@@ -574,7 +574,7 @@ async function ask(text) {
   if (out.kind === 'nofact' || out.kind === 'fallback') {
     const bub = say('ai', '<span class="typing">Thinking</span>');
     if (S.ai) {
-      const parsed = await aiParse(text);
+      const parsed = out.question ? null : await aiParse(text);
       if (parsed) { bub.remove(); return applyUpdate(parsed, '✦ AI understood an update'); }
       if (out.kind === 'fallback') {
         const ans = await aiAnswer(text);
@@ -597,8 +597,13 @@ async function aiParse(text) {
     const target = String(p.target).toUpperCase();
     const isTer = /^TER/.test(target);
     if (isTer ? !S.res.territories.some(t => t.id === target) : !S.res.recs.some(x => x.app.id === target)) return null;
-    const patch = {}, said = [];
+    const patch = {}, said = [], rejected = [];
+    // Guardrail: the AI may not invent numbers. Every number it returns must appear in the message itself
+    // (crore values may appear ×100 as lakh).
+    const seen = new Set();
+    for (const m of text.toLowerCase().matchAll(/(\d+(?:\.\d+)?)\s*(crore|cr\b)?/g)) { seen.add(+m[1]); if (m[2]) seen.add(+m[1] * 100); }
     for (const [k, v] of Object.entries(p.fields)) {
+      if ((APP_FIELDS[k] === 'number' || k === 'slots') && !seen.has(+v)) { rejected.push(`${k} = ${v}`); continue; }
       if (isTer) { if (k === 'slots' && Number.isInteger(+v) && +v >= 0) { patch.slots = +v; said.push(`open slots = ${v}`); } if (k === 'priority' && ['High', 'Medium', 'Low'].includes(v)) { patch.priority = v; said.push(`priority = ${v}`); } continue; }
       const rule = APP_FIELDS[k]; if (!rule) continue;
       if (rule === 'number' && v !== null && v !== '' && Number.isFinite(+v) && +v >= 0) { patch[k] = +v; patch[k + 'Raw'] = String(v); said.push(`${k} = ${v}`); }
@@ -607,6 +612,7 @@ async function aiParse(text) {
       else if (rule === 'city' && CITIES[v]) { patch.city = v; said.push(`city = ${v}`); }
       else if (rule === 'bool' && typeof v === 'boolean') { patch.withdrawn = v; said.push(v ? 'withdrawn' : 'reinstated'); }
     }
+    if (rejected.length) say('ai', `🛡 Ignored AI-extracted value(s) not found in your message: <b>${esc(rejected.join(', '))}</b>. Numbers are only accepted if you actually said them.`);
     if (!said.length) return null;
     return { type: isTer ? 'ter' : 'app', id: target, patch, said, text, source: 'ai' };
   } catch { return null; }
