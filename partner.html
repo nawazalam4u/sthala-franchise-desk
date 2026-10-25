@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Complete your application — Sthala</title>
+  <meta name="theme-color" content="#0d2b20">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Kannada:wght@500;700&family=Noto+Sans+Devanagari:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --forest: #0d2b20; --forest-3: #1a4a37; --cream: #f4ead2; --paper: #fbf5e6; --card: #fffaf0; --ink: #10241b; --ink-3: #7d8a80; --line: #e2d5b5; --gold: #e6a93a; --go: #23905c; --coral: #e8693f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--forest); color: var(--ink); font: 15px/1.5 'Inter', 'Noto Sans Kannada', 'Noto Sans Devanagari', system-ui, sans-serif; min-height: 100vh; }
+    .wrap { max-width: 520px; margin: 0 auto; padding: 22px 16px 60px; }
+    header { color: var(--cream); display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    header b { font: 800 22px 'Bricolage Grotesque', sans-serif; }
+    header span { color: var(--gold); font-weight: 700; }
+    .langs { margin-left: auto; display: flex; gap: 4px; background: var(--forest-3); padding: 3px; border-radius: 12px; }
+    .langs button { border: 0; background: none; color: var(--cream); padding: 6px 10px; border-radius: 9px; font: 600 13px inherit; cursor: pointer; }
+    .langs button.on { background: var(--gold); color: var(--forest); }
+    .card { background: var(--paper); border-radius: 22px; padding: 22px; box-shadow: 0 20px 50px -20px rgba(0,0,0,.6); }
+    h1 { font: 800 26px/1.15 'Bricolage Grotesque', 'Noto Sans Kannada', 'Noto Sans Devanagari', sans-serif; margin: 0 0 6px; letter-spacing: -.02em; }
+    p.sub { color: var(--ink-3); margin: 0 0 18px; }
+    label { display: block; font-weight: 700; font-size: 14px; margin: 16px 0 6px; }
+    input, select, textarea { width: 100%; font: inherit; padding: 12px 14px; border-radius: 14px; border: 1.5px solid var(--line); background: #fff; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid var(--gold); }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chips button { border: 1.5px solid var(--line); background: #fff; border-radius: 999px; padding: 9px 14px; font: 600 14px inherit; cursor: pointer; }
+    .chips button.on { background: var(--forest); color: var(--cream); border-color: var(--forest); }
+    .go { margin-top: 22px; width: 100%; border: 0; background: var(--gold); color: var(--forest); font: 800 17px 'Bricolage Grotesque', sans-serif; padding: 15px; border-radius: 16px; cursor: pointer; }
+    .go:disabled { opacity: .6; }
+    .done { text-align: center; padding: 30px 10px; }
+    .done .big { font-size: 64px; }
+    .err { background: #f9d9c9; color: #8a2c10; padding: 12px 14px; border-radius: 12px; margin-top: 12px; }
+    .hint { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; font-weight: 500; }
+    .foot { color: rgba(244,234,210,.5); font-size: 12px; text-align: center; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header><b>Sthala</b><span>ಸ್ಥಳ</span><div class="langs" id="langs"></div></header>
+    <div class="card" id="card"><p>Loading…</p></div>
+    <p class="foot">Your answers go only to the brand's expansion team for this application.</p>
+  </div>
+<script>
+const T = {
+  English: { hi: n => `Hi ${n}, just a few details`, sub: 'Answer only these and your application moves forward right away.', investment: 'How much can you invest? (₹ lakh)', investmentHint: '1 lakh = ₹1,00,000', experience: 'Years of running or managing a shop', experienceHint: '0 is fine', space: 'Your shop space', Owned: 'Owned', Rented: 'Rented', Identified: 'Found, not finalised', 'Not yet identified': 'Not found yet', size: 'Shop size (sq ft)', floor: 'Which floor?', Ground: 'Ground', Upper: 'Upper floor', 'Mall unit': 'Mall unit', 'Not known': 'Not sure', pin: '6-digit pin code of the shop', city: 'City', launch: 'Open in how many months?', language: 'Training language', note: 'How will you fund the rest? (loan, partner…)', send: 'Send to the team', thanks: n => `Thank you, ${n}!`, thanksSub: 'The expansion team has your answers. Your application is being re-checked now.', notfound: 'This link is not valid or has expired.', already: 'You already sent your answers — thank you!' },
+  Hindi: { hi: n => `नमस्ते ${n} जी, बस कुछ जानकारी`, sub: 'सिर्फ़ ये जवाब दें, आपका आवेदन तुरंत आगे बढ़ेगा।', investment: 'आप कितना निवेश कर सकते हैं? (₹ लाख)', investmentHint: '1 लाख = ₹1,00,000', experience: 'दुकान चलाने/संभालने का अनुभव (साल)', experienceHint: '0 भी ठीक है', space: 'आपकी दुकान की जगह', Owned: 'अपनी', Rented: 'किराए की', Identified: 'मिल गई, तय नहीं', 'Not yet identified': 'अभी नहीं मिली', size: 'दुकान का साइज़ (sq ft)', floor: 'कौन सी मंज़िल?', Ground: 'ग्राउंड', Upper: 'ऊपर की मंज़िल', 'Mall unit': 'मॉल में', 'Not known': 'पता नहीं', pin: 'दुकान का 6 अंकों का पिन कोड', city: 'शहर', launch: 'कितने महीनों में खोलना है?', language: 'ट्रेनिंग की भाषा', note: 'बाकी पैसे कैसे आएंगे? (लोन, पार्टनर…)', send: 'टीम को भेजें', thanks: n => `धन्यवाद, ${n} जी!`, thanksSub: 'टीम को आपके जवाब मिल गए हैं। आपका आवेदन अभी दोबारा जाँचा जा रहा है।', notfound: 'यह लिंक मान्य नहीं है।', already: 'आप जवाब भेज चुके हैं — धन्यवाद!' },
+  Kannada: { hi: n => `ನಮಸ್ಕಾರ ${n} ಅವರೇ, ಕೆಲವು ವಿವರಗಳು ಮಾತ್ರ`, sub: 'ಇವುಗಳಿಗೆ ಉತ್ತರಿಸಿ, ನಿಮ್ಮ ಅರ್ಜಿ ತಕ್ಷಣ ಮುಂದುವರಿಯುತ್ತದೆ.', investment: 'ನೀವು ಎಷ್ಟು ಹೂಡಿಕೆ ಮಾಡಬಹುದು? (₹ ಲಕ್ಷ)', investmentHint: '1 ಲಕ್ಷ = ₹1,00,000', experience: 'ಅಂಗಡಿ ನಡೆಸಿದ/ನಿರ್ವಹಿಸಿದ ಅನುಭವ (ವರ್ಷ)', experienceHint: '0 ಆದರೂ ಸರಿ', space: 'ನಿಮ್ಮ ಅಂಗಡಿ ಸ್ಥಳ', Owned: 'ಸ್ವಂತ', Rented: 'ಬಾಡಿಗೆ', Identified: 'ಸಿಕ್ಕಿದೆ, ಅಂತಿಮವಾಗಿಲ್ಲ', 'Not yet identified': 'ಇನ್ನೂ ಸಿಕ್ಕಿಲ್ಲ', size: 'ಅಂಗಡಿ ಗಾತ್ರ (sq ft)', floor: 'ಯಾವ ಮಹಡಿ?', Ground: 'ನೆಲ ಮಹಡಿ', Upper: 'ಮೇಲಿನ ಮಹಡಿ', 'Mall unit': 'ಮಾಲ್‌ನಲ್ಲಿ', 'Not known': 'ಗೊತ್ತಿಲ್ಲ', pin: 'ಅಂಗಡಿಯ 6 ಅಂಕಿಯ ಪಿನ್ ಕೋಡ್', city: 'ನಗರ', launch: 'ಎಷ್ಟು ತಿಂಗಳಲ್ಲಿ ತೆರೆಯಬೇಕು?', language: 'ತರಬೇತಿ ಭಾಷೆ', note: 'ಉಳಿದ ಹಣ ಹೇಗೆ? (ಸಾಲ, ಪಾಲುದಾರ…)', send: 'ತಂಡಕ್ಕೆ ಕಳುಹಿಸಿ', thanks: n => `ಧನ್ಯವಾದಗಳು, ${n} ಅವರೇ!`, thanksSub: 'ತಂಡಕ್ಕೆ ನಿಮ್ಮ ಉತ್ತರಗಳು ತಲುಪಿವೆ. ನಿಮ್ಮ ಅರ್ಜಿಯನ್ನು ಈಗ ಮರುಪರಿಶೀಲಿಸಲಾಗುತ್ತಿದೆ.', notfound: 'ಈ ಲಿಂಕ್ ಮಾನ್ಯವಾಗಿಲ್ಲ.', already: 'ನೀವು ಈಗಾಗಲೇ ಉತ್ತರ ಕಳುಹಿಸಿದ್ದೀರಿ — ಧನ್ಯವಾದಗಳು!' },
+};
+const CITIES = ['Bengaluru', 'Mysuru', 'Mangaluru', 'Hubballi-Dharwad', 'Belagavi', 'Tumakuru', 'Davanagere'];
+const id = new URLSearchParams(location.search).get('id');
+let rec = null, lang = 'English';
+const val = {};
+const $ = s => document.querySelector(s);
+const esc = x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function langs() {
+  $('#langs').innerHTML = Object.keys(T).map(l => `<button class="${l === lang ? 'on' : ''}" data-l="${l}">${{ English: 'EN', Hindi: 'हि', Kannada: 'ಕ' }[l]}</button>`).join('');
+  $('#langs').querySelectorAll('button').forEach(b => b.onclick = () => { lang = b.dataset.l; draw(); });
+}
+function chips(field, opts) { return `<div class="chips">${opts.map(o => `<button type="button" data-f="${field}" data-v="${o}" class="${val[field] === o ? 'on' : ''}">${esc(T[lang][o] || o)}</button>`).join('')}</div>`; }
+function draw() {
+  langs();
+  const t = T[lang], first = esc((rec.app_name || '').split(' ')[0]);
+  if (rec.status === 'answered') { $('#card').innerHTML = `<div class="done"><div class="big">✅</div><h1>${t.already}</h1></div>`; return; }
+  const f = rec.asks;
+  let html = `<h1>${t.hi(first)}</h1><p class="sub">${t.sub}</p><form id="fm">`;
+  if (f.includes('investment')) html += `<label>${t.investment}<div class="hint">${t.investmentHint}</div></label><input name="investment" type="number" min="0" step="0.5" inputmode="decimal" value="${val.investment ?? ''}">`;
+  if (f.includes('note')) html += `<label>${t.note}</label><input name="note" maxlength="300" value="${esc(val.note ?? '')}">`;
+  if (f.includes('experience')) html += `<label>${t.experience}<div class="hint">${t.experienceHint}</div></label><input name="experience" type="number" min="0" max="50" inputmode="numeric" value="${val.experience ?? ''}">`;
+  if (f.includes('space')) html += `<label>${t.space}</label>${chips('space', ['Owned', 'Rented', 'Identified', 'Not yet identified'])}`;
+  if (f.includes('city')) html += `<label>${t.city}</label><select name="city"><option value=""></option>${CITIES.map(c => `<option ${val.city === c ? 'selected' : ''}>${c}</option>`).join('')}</select>`;
+  if (f.includes('pin')) html += `<label>${t.pin}</label><input name="pin" inputmode="numeric" pattern="\\d{6}" maxlength="6" value="${val.pin ?? ''}">`;
+  if (f.includes('size')) html += `<label>${t.size}</label><input name="size" type="number" min="0" inputmode="numeric" value="${val.size ?? ''}">`;
+  if (f.includes('floor')) html += `<label>${t.floor}</label>${chips('floor', ['Ground', 'Upper', 'Mall unit', 'Not known'])}`;
+  if (f.includes('launch')) html += `<label>${t.launch}</label><input name="launch" type="number" min="0" max="36" inputmode="numeric" value="${val.launch ?? ''}">`;
+  if (f.includes('language')) html += `<label>${t.language}</label>${chips('language', ['Kannada', 'English', 'Hindi'])}`;
+  html += `<button class="go" type="submit">${t.send} →</button><div id="err"></div></form>`;
+  $('#card').innerHTML = html;
+  $('#card').querySelectorAll('.chips button').forEach(b => b.onclick = () => { val[b.dataset.f] = b.dataset.v; draw(); });
+  $('#card').querySelectorAll('input,select').forEach(i => i.oninput = () => { val[i.name] = i.value; });
+  $('#fm').onsubmit = async e => {
+    e.preventDefault();
+    if (val.pin && !/^\d{6}$/.test(val.pin)) { $('#err').innerHTML = '<div class="err">Pin code must be 6 digits.</div>'; return; }
+    const btn = $('.go'); btn.disabled = true;
+    try {
+      const r = await fetch('/api/clarify', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, answer: val }) });
+      if (!r.ok) throw 0;
+      $('#card').innerHTML = `<div class="done"><div class="big">🎉</div><h1>${t.thanks(first)}</h1><p class="sub">${t.thanksSub}</p></div>`;
+    } catch { btn.disabled = false; $('#err').innerHTML = '<div class="err">Could not send — please try again.</div>'; }
+  };
+}
+(async () => {
+  try {
+    const r = await fetch(`/api/clarify?id=${encodeURIComponent(id || '')}`);
+    if (!r.ok || !id) throw 0;
+    rec = await r.json();
+    lang = T[rec.lang] ? rec.lang : 'English';
+    draw();
+  } catch { $('#card').innerHTML = `<div class="done"><div class="big">🔗</div><h1>${T.English.notfound}</h1></div>`; }
+})();
+</script>
+</body>
+</html>

@@ -2,5 +2,5 @@
   "name": "sthala",
   "private": true,
   "type": "module",
-  "dependencies": { "@anthropic-ai/sdk": "^1.1.0" }
+  "dependencies": { "@anthropic-ai/sdk": "^1.1.0", "@neondatabase/serverless": "^1.2.0" }
 }
