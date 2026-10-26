@@ -1,0 +1,11 @@
+import { evaluate } from '../js/engine.js';
+import { parseWorkbook } from '../js/workbook.js';
+import { interpret } from '../js/copilot.js';
+const wb = parseWorkbook(XLSX, readFile('data/tricky.xlsx', 'binary'));
+print('found', JSON.stringify(wb.report.found), 'apps', wb.applications.length, 'terrs', wb.territories.length, 'warn', JSON.stringify(wb.report.warnings));
+const res = evaluate(wb);
+print('invariants', JSON.stringify(res.invariants));
+for (const d of res.dataIssues) print('DATA', d.sev, d.ref, d.text);
+for (const r of res.recs) print(`${(r.app.id || '(none)').padEnd(8)} ${r.outcome.padEnd(22)} ${String(r.score).padStart(5)} | inv=${r.app.investment} exp=${r.app.experience} pin=${r.app.pin} floor=${r.app.floor} lang=${r.app.language} | ${r.decision.headline}`);
+print(interpret('Why is APP-104 on hold?', res).html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 400));
+print(JSON.stringify(interpret('Asha can now invest 40 lakh', res)));
