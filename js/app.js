@@ -57,8 +57,10 @@ function loadBytes(bytes, name) {
     fillGeo();
   } catch (e) {
     console.error(e);
-    toast(`Couldn't read that file: ${e.message}`);
-    if (!S.base) renderLanding(e.message);
+    const ours = /Applications sheet|Territories sheet/.test(e.message);
+    const msg = ours ? `${e.message} Please upload the case template (Applications + Territories sheets).` : `"${name}" isn't a readable Excel workbook (it may be corrupt, password-protected or a different format). Please upload the filled-in case template as .xlsx.`;
+    toast(msg.length > 120 ? msg.slice(0, 117) + '…' : msg);
+    if (!S.base) renderLanding(msg); else say('ai', `⚠ ${esc(msg)} Your previous workbook is still loaded.`);
   }
 }
 async function loadDemo() {
