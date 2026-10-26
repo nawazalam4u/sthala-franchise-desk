@@ -1,4 +1,4 @@
-// Sthala decision engine — pure functions, no DOM. Same input + same config => same output.
+// Decision engine — pure functions, no DOM. Same input + same config => same output.
 // Hard rules from the brief are enforced here in code; everything else is a labelled, editable assumption.
 
 export const CITIES = {
@@ -487,6 +487,23 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
     }
   }
 
+  // decision confidence: how far each slot decision is from flipping (margin to the nearest rival)
+  for (const r of recs) {
+    if (!r.territory || !['SHORTLIST', 'SHORTLIST_CONDITIONAL', 'WAITLIST'].includes(r.outcome) || r.waitReason === 'BAR' || r.waitReason === 'ZERO_SLOTS') continue;
+    const st = territoryState[r.territory.id];
+    const rivalsOut = st.waitlist.filter(w => w.waitReason === 'NO_SLOT');
+    const pinLosers = recs.filter(x => x.lostPinTo === r.app.id);
+    let margin = null, vs = null;
+    if (r.outcome.startsWith('SHORTLIST')) {
+      const nearest = [...rivalsOut, ...pinLosers].sort((a, b) => b.score - a.score)[0];
+      if (nearest) { margin = Math.round((r.score - nearest.score) * 10) / 10; vs = nearest.app.id; }
+    } else {
+      const lowest = st.shortlisted.slice().sort((a, b) => a.score - b.score)[0];
+      if (lowest) { margin = Math.round((lowest.score - r.score) * 10) / 10; vs = lowest.app.id; }
+    }
+    r.confidence = margin === null ? { level: 'Uncontested', margin: null, vs: null }
+      : { level: margin >= 10 ? 'High' : margin >= 3 ? 'Medium' : 'Low', margin, vs };
+  }
   for (const r of recs) { r.decision = explain(r, cfg); }
 
   const invariants = checkInvariants(recs, terrs, stores);
@@ -568,6 +585,7 @@ export function explain(r, cfg) {
   if (o === 'HOLD' || o === 'RELOCATE') for (const i of block) change.push(i.ask);
   if (o === 'HOLD' && r.hypothetical && r.gates.location === 'ok') change.push(`If cleared at current values, would rank ~#${r.hypothetical.rank} in ${t.id}${r.hypothetical.wouldGetSlot ? ' — within the slots' : ''}.`);
   if (o?.startsWith('SHORTLIST')) change.push('Due diligence fails, site is rejected at the visit, or a higher-scoring partner clears their hold in the same territory.');
+  if (r.confidence?.level === 'Low') change.push(`Fragile: only ${r.confidence.margin} points separate this from ${r.confidence.vs} — a small change in the weights could flip it; a person should look before anything is signed.`);
 
   return { headline, next, evidence: lines, change: [...new Set(change)] };
 }

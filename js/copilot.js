@@ -284,7 +284,7 @@ export function diff(prev, next, focusId) {
 }
 
 export function diffHtml(changes, said, target, whatIf) {
-  const rows = changes.map(c => `<tr class="${c.focus ? 'focus' : ''}"><td>${appLink(c.id)}</td><td>${chip(c.from)}</td><td>→</td><td>${chip(c.to)}</td><td class="muted">${c.s0} → ${c.s1}</td></tr>`).join('');
+  const rows = changes.map(c => `<tr class="${c.focus ? 'focus' : ''}"><td>${appLink(c.id)}</td><td>${chip(c.from)}</td><td>→</td><td>${chip(c.to)}</td><td class="muted">${c.s0 ?? "—"} → ${c.s1 ?? "—"}</td></tr>`).join('');
   const ripple = changes.filter(c => !c.focus && c.from !== c.to);
   return `<div class="ans-head">${whatIf ? 'What-if applied' : 'Update applied'} to ${target}</div>
   <p>Understood: <b>${said.map(esc).join(', ')}</b>. Workbook values are kept; this is logged as an update on top. Nothing else was assumed.</p>

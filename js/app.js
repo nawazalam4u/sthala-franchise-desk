@@ -18,7 +18,7 @@ const STAMP = { SHORTLIST: 'GO', SHORTLIST_CONDITIONAL: 'GO*', PREQUALIFIED: 'FI
 const S = {
   base: null, report: null, fileName: '', patches: [], cfg: structuredClone(DEFAULT_CONFIG), res: null,
   geo: {}, tab: 'overview', filter: 'ALL', q: '', view: 'wall', sort: { k: 'rank', dir: 1 }, focus: null, map: null, mapCity: 'All',
-  mapMode: 'scout', chatHistory: [], ai: false, portalReady: false, links: {}, missions: {},
+  mapMode: 'scout', signed: {}, ms: 0, chatHistory: [], ai: false, portalReady: false, links: {}, missions: {},
 };
 
 // ---------- data pipeline ----------
@@ -36,7 +36,7 @@ function currentInput() {
   }
   return { applications: apps, territories: terrs, stores: S.base.stores };
 }
-function recompute() { S.res = evaluate(currentInput(), S.cfg, S.geo); return S.res; }
+function recompute() { const t0 = performance.now(); S.res = evaluate(currentInput(), S.cfg, S.geo); S.ms = Math.max(1, Math.round(performance.now() - t0)); return S.res; }
 
 function loadBytes(bytes, name) {
   try {
@@ -45,7 +45,7 @@ function loadBytes(bytes, name) {
     const apps = wb.applications.map(normaliseApplication), seen = {};
     for (const a of apps) { seen[a.id] = (seen[a.id] || 0) + 1; if (seen[a.id] > 1) { a.idOriginal = a.id; a.id = `${a.id}·R${a.row}`; } }
     S.base = { applications: apps, territories: wb.territories.map(normaliseTerritory), stores: wb.stores };
-    S.report = wb.report; S.fileName = name; S.patches = []; S.focus = null; S.links = {}; S.scoutStart = null; S.scoutSeen = false;
+    S.report = wb.report; S.fileName = name; S.patches = []; S.focus = null; S.links = {}; S.signed = {}; S.scoutStart = null; S.scoutSeen = false;
     try { S.missions = JSON.parse(localStorage.getItem('pp-m-' + name) || '{}'); } catch { S.missions = {}; }
     recompute();
     $('#fileName').hidden = false; $('#fileName').textContent = `${name} · ${S.base.applications.length} applications`;
@@ -169,7 +169,7 @@ function renderLanding(err) {
   $('#main').innerHTML = `<section class="hero2">
     <div class="hero-copy">
       <span class="eyebrow">● Ops Hackathon · Case 1 · Franchise partner acquisition, geo-selection & onboarding</span>
-      <h1 class="reveal"><span>A brand wants more franchise stores.</span><span>Hundreds apply. Pin codes clash.</span><span><em>PinPoint decides who, where — and what's next.</em></span></h1>
+      <h1 class="reveal"><span>A brand wants more franchise stores.</span><span>Hundreds apply. Pin codes clash.</span><span><em>Franchise Radar decides who, where — and what's next.</em></span></h1>
       <p class="lead reveal-late">Upload the applications and territories. In seconds every partner gets a decision, the reason behind it, a slot (or a better pin), and a week-by-week path to an open, trained store — in Kannada, Hindi or English.</p>
       <div class="hero-cta reveal-late"><button class="btn primary pulse big" id="lpDemo">▶ Run the demo</button><button class="btn ghost-d big" id="lpUpload">Upload your workbook</button></div>
       <div class="drop reveal-late" id="drop"><div class="ic">📥</div><div><b>Or drop the judges' .xlsx here</b><span>The official template, as-is. Nothing to rename.</span></div></div>
@@ -187,7 +187,7 @@ function renderLanding(err) {
     </div>
   </section>
   <section class="how">
-    <div class="ph"><span class="k">WHAT PINPOINT DOES</span><h2>Four gates, one rulebook, zero guesswork</h2></div>
+    <div class="ph"><span class="k">WHAT FRANCHISE RADAR DOES</span><h2>Four gates, one rulebook, zero guesswork</h2></div>
     <div class="levels">
       <div class="lvl l1"><span class="k">01 · READ</span><b>Takes the template as-is</b><p>Finds the sheets by their headers, skips the grey sample row, cleans "570 001", "1.2 crore", "five years".</p><span class="emoji">📄</span></div>
       <div class="lvl l2"><span class="k">02 · CHECK</span><b>Partner, site and location — separately</b><p>A strong partner with no shop is pre-qualified, not rejected. Missing facts = a specific question, never a silent no.</p><span class="emoji">🚦</span></div>
@@ -252,33 +252,101 @@ function cinematic(res, name) {
   });
 }
 
+const KA_OUTLINE = [[74.1,15.0],[74.5,14.3],[74.7,13.3],[74.85,12.8],[75.3,12.1],[75.9,11.9],[76.6,11.6],[77.3,11.8],[77.8,12.2],[78.5,12.7],[78.2,13.3],[77.8,13.9],[77.2,14.3],[76.9,15.0],[77.4,15.6],[77.5,16.4],[77.3,17.2],[77.6,17.8],[77.0,18.4],[76.4,17.9],[75.6,17.5],[75.0,16.9],[74.3,16.6],[74.2,15.9],[74.0,15.4]];
+const kp = ([lng, lat]) => [(lng - 73.8) * 100, (18.6 - lat) * 100];
+function karnatakaBoard() {
+  const res = S.res, outline = KA_OUTLINE.map(kp).map(([x, y]) => `${x.toFixed(0)},${y.toFixed(0)}`).join(' ');
+  const cities = Object.entries(CITY_XY).map(([c, [lat, lng]]) => {
+    const [x, y] = kp([lng, lat]);
+    const apps = res.recs.filter(r => r.city === c).length;
+    const st = Object.values(res.territoryState).filter(s => s.territory.city === c);
+    const slots = st.reduce((a, s) => a + (s.territory.slots ?? 0), 0), used = st.reduce((a, s) => a + s.used, 0);
+    const stores = res.stores.filter(s => s.city === c).length;
+    return { c, x, y, apps, slots, used, stores };
+  }).filter(o => o.apps || o.slots || o.stores);
+  return `<svg class="kaboard" viewBox="0 0 520 720" role="img" aria-label="Karnataka expansion board">
+    <polygon points="${outline}" class="ka-shape"/>
+    ${cities.map(o => { const r = 16 + Math.min(30, o.apps * 2.2), circ = 2 * Math.PI * (r + 6), pct = o.slots ? o.used / o.slots : 0;
+      return `<g class="kcity" data-city="${o.c}" tabindex="0"><circle cx="${o.x}" cy="${o.y}" r="${r + 6}" class="kring-bg"/><circle cx="${o.x}" cy="${o.y}" r="${r + 6}" class="kring" stroke-dasharray="${circ}" stroke-dashoffset="${circ * (1 - pct)}" transform="rotate(-90 ${o.x} ${o.y})"/>
+        <circle cx="${o.x}" cy="${o.y}" r="${r}" class="kbub"/><text x="${o.x}" y="${o.y + 6}" class="kn">${o.apps}</text>
+        ${(() => { const left = o.c === 'Tumakuru' || o.c === 'Mangaluru' && false; const tx = left ? o.x - r - 12 : o.x + r + 12, an = left ? 'end' : 'start', dy = o.c === 'Tumakuru' ? -14 : 0;
+          return `<text x="${tx}" y="${o.y - 4 + dy}" class="kl" text-anchor="${an}">${o.c}</text><text x="${tx}" y="${o.y + 14 + dy}" class="ks" text-anchor="${an}">${o.used}/${o.slots} slots · ${o.stores} store${o.stores === 1 ? '' : 's'}</text>`; })()}</g>`; }).join('')}
+  </svg>`;
+}
+function openingChart() {
+  const months = [0, 0, 0, 0, 0, 0], now = new Date();
+  for (const r of S.res.recs) {
+    if (!r.outcome.startsWith('SHORTLIST')) continue;
+    const p = buildPlan(r); if (!p) continue;
+    const m = Math.min(5, Math.max(0, Math.ceil(Math.max(p.criticalMonths, p.targetMonths ?? 0)) - 1));
+    months[m]++;
+  }
+  const max = Math.max(1, ...months);
+  const lbl = i => new Date(now.getFullYear(), now.getMonth() + i + 1, 1).toLocaleDateString('en-IN', { month: 'short' });
+  return `<div class="ochart">${months.map((n, i) => `<div class="ocol"><b>${n || ''}</b><i style="height:${n / max * 100}%"></i><span>${lbl(i)}${i === 5 ? '+' : ''}</span></div>`).join('')}</div>`;
+}
+function caseChecklist() {
+  const res = S.res, c = counts(), n = res.recs.length;
+  const storeBlocks = res.recs.filter(r => r.issues.some(i => i.code === 'EXISTING_STORE_PIN')).length;
+  const contests = new Set(res.recs.filter(r => r.lostPinTo).map(r => r.app.pin)).size;
+  const amb = res.recs.filter(r => r.issues.some(i => i.code === 'PIN_IN_MULTIPLE_TERRITORIES')).length;
+  const noSite = res.recs.filter(r => r.gates.site === 'none').length;
+  const dups = res.recs.filter(r => r.flags.some(f => f.code === 'POSSIBLE_DUPLICATE') || r.issues.some(i => i.code === 'DUP_ID')).length;
+  const fragile = res.recs.filter(r => r.confidence?.level === 'Low').length;
+  const plans = res.recs.filter(r => buildPlan(r)).length;
+  const pg = progress();
+  const hold = res.recs.find(r => r.outcome === 'HOLD'), pre = res.recs.find(r => r.outcome === 'PREQUALIFIED');
+  const rows = [
+    ['Read the judges\' workbook as-is', `${n} applications, ${res.territories.length} territories, ${res.stores.length} existing stores${S.report.samplesExcluded.length ? ' · grey example row skipped' : ''}`, 'data'],
+    ['What should happen to every partner — and why', `${n} of ${n} have an outcome, evidence and a next step`, 'applicants'],
+    ['Never two stores in one pin code', `${res.invariants.ok ? '0 violations' : 'VIOLATION'} · ${storeBlocks} blocked by existing stores · ${contests} same-pin contest(s) settled`, 'territories'],
+    ['Several applicants compete for a territory', `${pg.used} of ${pg.slots} slots filled, ranked transparently · ${fragile} close call(s) flagged for a human`, 'territories'],
+    ['Incomplete or contradictory applications', `${c.HOLD || 0} on hold with a specific question · ${noSite} without a shop pre-qualified (no slot) — nobody silently rejected`, 'data'],
+    ['Edge cases', `${amb} pin(s) listed in two territories → held, not guessed · ${dups} possible duplicate(s) flagged`, 'data'],
+    ['"Why is APP-007 on hold?" — plain-language follow-ups', hold ? `<button class="linkbtn" data-q="Why is ${hold.app.id} on hold?">Ask: Why is ${hold.app.id} on hold? →</button>` : 'Ask anything in the copilot →', null],
+    ['New information changes the decision', pre ? `<button class="linkbtn" data-q="${pre.app.id} has now found a ground-floor space">Tell it: ${pre.app.id} found a ground-floor space →</button>` : 'Tell the copilot what changed →', null],
+    ['What partners do next & how they are prepared', `${plans} week-by-week onboarding plans · training track by experience · in Kannada, Hindi or English`, 'applicants'],
+  ];
+  return `<div class="checklist">${rows.map(([a, b, tab]) => `<div class="ck-row" ${tab ? `data-tab="${tab}"` : ''}><span class="ck-tick">✓</span><div><b>${a}</b><span>${b}</span></div></div>`).join('')}</div>`;
+}
+
 function viewOverview(v) {
   const res = S.res, c = counts(), pg = progress();
+  const human = res.recs.filter(r => ['SHORTLIST', 'SHORTLIST_CONDITIONAL'].includes(r.outcome) && !S.signed[r.app.id]).length + (c.HOLD || 0);
+  const fragile = res.recs.filter(r => r.confidence?.level === 'Low').length;
   const tiles = [['ALL', 'Applications', res.recs.length, 'all', '📚'], ['SHORTLIST', 'Shortlisted', c.SHORTLIST || 0, 'c-go', '✅'], ['SHORTLIST_CONDITIONAL', 'Conditional', c.SHORTLIST_CONDITIONAL || 0, 'c-go2', '⏳'],
     ['PREQUALIFIED', 'Find a site', c.PREQUALIFIED || 0, 'c-info', '🔍'], ['WAITLIST', 'Waitlisted', c.WAITLIST || 0, 'c-wait', '🪑'], ['RELOCATE', 'Move pin', c.RELOCATE || 0, 'c-warn', '🔁'],
     ['HOLD', 'On hold', c.HOLD || 0, 'c-hold', '✋'], ['OUT_OF_PLAN', 'Outside / out', (c.OUT_OF_PLAN || 0) + (c.NOT_PROCEEDING || 0) + (c.WITHDRAWN || 0), 'c-muted', '🧭']];
-  const n = res.recs.length || 1;
-  const screened = res.recs.filter(r => r.gates.partner === 'ok').length, site = res.recs.filter(r => ['ok', 'conditional'].includes(r.gates.site)).length;
-  const slotted = (c.SHORTLIST || 0) + (c.SHORTLIST_CONDITIONAL || 0), plans = res.recs.filter(r => buildPlan(r)).length;
-  const river = [['Applied', res.recs.length], ['Partner screen-ready', screened], ['Site ready', site], ['Holding a slot', slotted], ['Onboarding plans', plans]];
   const pr = { High: 0, Medium: 1, Low: 2 };
   const terrs = Object.values(res.territoryState).sort((a, b) => (pr[a.territory.priority] ?? 3) - (pr[b.territory.priority] ?? 3) || a.territory.id.localeCompare(b.territory.id));
   v.innerHTML = `
-    <section class="quest">
-      <div class="ring">${ring(pg.pct)}<div class="v"><div><b data-count="${pg.pct}">0</b><small>% slots</small></div></div></div>
-      <div><span class="lvlname">${pg.level[0]} · ${pg.level[1].toUpperCase()}</span><h2>Expansion quest: <em>${pg.used} of ${pg.slots} stores</em> lined up</h2>
-        <div class="xp"><i style="width:${Math.min(100, pg.xp / 10)}%"></i></div>
-        <div class="rules">${res.invariants.ok ? '<b>✓ Hard rules verified</b> — one store per pin · none on an existing store · no territory over its slots' : `⚠ ${res.invariants.errors.map(esc).join(' ')}`} · <b style="color:var(--gold-2)">${pg.xp} XP</b></div></div>
-      <div class="badges">${pg.badges.map(([e, name, tip, on]) => `<span class="badge ${on ? 'on' : ''}" data-tip="${on ? '🏆 ' : '🔒 '}${name}: ${tip}">${e}</span>`).join('')}</div>
+    <section class="verdict glass">
+      <div class="vd-main"><span class="eyebrow">VERDICT · ${esc(S.fileName)}</span>
+        <h1><b data-count="${res.recs.length}">0</b> applications decided in <em>${S.ms} ms</em></h1>
+        <p>${pg.used} of ${pg.slots} store slots provisionally filled · every partner has a reason and a next step · nothing is final until a manager signs off.</p></div>
+      <div class="vd-stats">
+        <div class="vs ${res.invariants.ok ? 'good' : 'bad'}"><b>${res.invariants.ok ? '0' : '!'}</b><span>rule violations</span></div>
+        <div class="vs"><b data-count="${human}">0</b><span>need a human today</span></div>
+        <div class="vs ${fragile ? 'warn' : ''}"><b data-count="${fragile}">0</b><span>close calls flagged</span></div>
+        <div class="vs"><b data-count="${pg.pct}">0</b><span>% of slots filled</span></div>
+      </div>
     </section>
     ${S.patches.length ? `<div class="banner note" style="margin-top:12px">✎ ${S.patches.length} update(s) layered on top of the workbook. <a href="#" id="resetAll">Reset to workbook</a></div>` : ''}
+    <div class="grid cc">
+      <div class="glass pad"><div class="sec-title" style="margin-top:0"><h2>The case, <em>answered</em></h2><span class="sub">Click any line for the evidence</span></div>${caseChecklist()}</div>
+      <div class="glass pad"><div class="sec-title" style="margin-top:0"><h2>Karnataka <em>board</em></h2><span class="sub">Bubble = applicants · ring = slots filled · click a city</span></div>${karnatakaBoard()}</div>
+    </div>
     <div class="tiles">${tiles.map(([k, l, num, cls, e]) => `<div class="tile ${cls}" data-filter="${k}"><span class="e">${e}</span><div class="v" data-count="${num}">0</div><div class="l">${l}</div></div>`).join('')}</div>
-    <div class="river">${river.map(([l, x]) => `<div class="st"><b data-count="${x}">0</b><span>${l}</span><i style="width:${x / n * 100}%"></i></div>`).join('')}</div>
+    <div class="grid g2" style="margin-top:14px">
+      <div class="glass pad"><div class="sec-title" style="margin-top:0"><h2>Needs a <em>human</em> today</h2><span class="sub">Highest-priority territory first · tick to earn XP</span></div><div class="missions">${missions()}</div></div>
+      <div class="glass pad"><div class="sec-title" style="margin-top:0"><h2>Stores <em>opening</em></h2><span class="sub">Shortlisted partners by estimated opening month</span></div>${openingChart()}
+        <div class="quest mini"><div><span class="lvlname">${pg.level[0]} · ${pg.level[1].toUpperCase()}</span><div class="xp"><i style="width:${Math.min(100, pg.xp / 10)}%"></i></div><small>${pg.xp} XP · ${pg.badges.filter(b => b[3]).length}/${pg.badges.length} badges</small></div>
+        <div class="badges">${pg.badges.map(([e, name, tip, on]) => `<span class="badge ${on ? 'on' : ''}" data-tip="${on ? '🏆 ' : '🔒 '}${name}: ${tip}">${e}</span>`).join('')}</div></div></div>
+    </div>
     <div class="sec-title"><h2>Territory <em>board</em></h2><span class="sub">Each circle is a store slot. Priority (🔥) decides the order the team works in — never the slot limit.</span></div>
-    <div class="grid g3">${terrs.map(terrCard).join('')}</div>
-    <div class="sec-title"><h2>Today's <em>missions</em></h2><span class="sub">Highest-priority territory first · tick to earn XP</span></div>
-    <div class="missions">${missions()}</div>`;
+    <div class="grid g3">${terrs.map(terrCard).join('')}</div>`;
   v.querySelectorAll('.tile').forEach(k => k.onclick = () => { S.filter = k.dataset.filter; S.tab = 'applicants'; render(); });
+  v.querySelectorAll('.kcity').forEach(k => k.onclick = () => { S.mapCity = k.dataset.city; S.tab = 'map'; render(); });
   v.querySelectorAll('.mission input').forEach(cb => cb.onchange = () => {
     S.missions[cb.dataset.m] = cb.checked;
     try { localStorage.setItem('pp-m-' + S.fileName, JSON.stringify(S.missions)); } catch { }
@@ -327,10 +395,10 @@ function viewApplicants(v) {
       rs = rs.slice().sort((a, b) => OUTCOMES[a.outcome].rank - OUTCOMES[b.outcome].rank || b.score - a.score);
       const dot = x => ({ ok: 'ok', conditional: 'warn', review: 'warn', none: 'warn', outside: 'warn', blocked: 'bad', hold: 'bad', fail: 'bad' }[x] || '');
       $('#list').innerHTML = `<div class="wall">${rs.map((r, i) => { const tone = OUTCOMES[r.outcome].tone; const g = r.gates;
-        return `<article class="pcard" data-app="${r.app.id}" style="animation-delay:${Math.min(i, 20) * .03}s"><span class="band" style="background:${toneColor[tone]}"></span><span class="stamp" style="color:${toneColor[tone]}">${STAMP[r.outcome]}</span>
+        return `<article class="pcard" data-app="${r.app.id}" style="animation-delay:${Math.min(i, 20) * .03}s"><span class="band" style="background:${toneColor[tone]}"></span><span class="stamp" style="color:${S.signed[r.app.id] ? '#5fd39a' : toneColor[tone]}">${S.signed[r.app.id] ? 'SIGNED' : STAMP[r.outcome]}</span>
           <div class="top-row">${avatar(r.app)}<div style="min-width:0"><h3>${esc(r.app.name || '(no name)')}</h3><div class="meta mono">${r.app.id} · ${esc(r.app.city || r.app.cityRaw || '—')} ${r.app.pin || ''}</div></div></div>
           <p class="hl">${esc(r.decision.headline)}</p>
-          <div class="row">${scoreRing(r.score, tone)}${chip(r.outcome)}${r.territory ? `<span class="tagp prio-${r.territory.priority}">${r.territory.id}</span>` : ''}${r.app.language ? `<span class="tagp">🗣 ${r.app.language}</span>` : ''}${r.flags.some(f => f.code === 'CATCHMENT_OVERLAP') ? '<span class="tagp" title="Close to an existing store">📍 overlap</span>' : ''}${S.patches.some(p => p.id === r.app.id) ? '<span class="tagp">✎ updated</span>' : ''}</div>
+          <div class="row">${scoreRing(r.score, tone)}${chip(r.outcome)}${r.territory ? `<span class="tagp prio-${r.territory.priority}">${r.territory.id}</span>` : ''}${r.app.language ? `<span class="tagp">🗣 ${r.app.language}</span>` : ''}${r.flags.some(f => f.code === 'CATCHMENT_OVERLAP') ? '<span class="tagp" title="Close to an existing store">📍 overlap</span>' : ''}${r.confidence?.level === 'Low' ? '<span class="tagp" title="Close call">🟠 close call</span>' : ''}${S.patches.some(p => p.id === r.app.id) ? '<span class="tagp">✎ updated</span>' : ''}</div>
           <div class="gdots" title="Location · Partner · Site · Slot"><span class="${dot(g.location)}"></span><span class="${dot(g.partner)}"></span><span class="${dot(g.site)}"></span><span class="${r.outcome.startsWith('SHORTLIST') ? 'ok' : r.outcome === 'WAITLIST' ? 'warn' : ''}"></span></div></article>`; }).join('') || '<p class="muted">No matches.</p>'}</div>`;
     } else {
       const key = { id: r => r.app.id, name: r => r.app.name, city: r => (r.app.city || '') + r.app.pin, terr: r => r.territory?.id || 'zz', inv: r => r.app.investment ?? -1, exp: r => r.app.experience ?? -1, space: r => r.app.space || '', score: r => r.score, rank: r => OUTCOMES[r.outcome].rank * 1000 - r.score }[S.sort.k];
@@ -392,6 +460,8 @@ function openDetail(id) {
     <div class="dr-body">
       <div class="card"><div class="headline">${esc(r.decision.headline)}</div></div>
       <div class="gates">${loc}${par}${sit}${slot}</div>
+      ${r.confidence ? `<div class="conf conf-${r.confidence.level}"><b>${{ High: '🟢 Clear decision', Medium: '🟡 Reasonably clear', Low: '🟠 Close call — needs a human look', Uncontested: '⚪ Uncontested' }[r.confidence.level]}</b><span>${r.confidence.margin === null ? 'No other decision-ready partner competes for this slot, so no ranking was needed.' : `${Math.abs(r.confidence.margin)} points ${r.confidence.margin >= 0 && o.startsWith('SHORTLIST') ? 'ahead of' : 'behind'} ${r.confidence.vs}.`}</span></div>` : ''}
+      ${o.startsWith('SHORTLIST') ? `<div class="signoff glass">${S.signed[id] ? `<b>✅ Signed off by expansion manager</b><span>Letter of Intent can go out. Due diligence runs next.</span>` : `<div><b>Manager sign-off</b><span>The engine recommends; a person decides. Declining releases the slot and the next partner in line is promoted automatically.</span></div><div class="so-btns"><button class="btn primary" id="signBtn">✓ Sign off</button><button class="btn ghost-d" id="declineBtn">✕ Decline</button></div>`}</div>` : ''}
       ${asks.length && !['WITHDRAWN', 'NOT_PROCEEDING'].includes(o) ? `<div class="portal" id="portalBox">${portalHtml(r, asks, link)}</div>` : ''}
       <div class="card"><div class="sec-title" style="margin-top:0"><h2>Why <em>— the evidence</em></h2><span class="sub">every line tagged by where it comes from</span></div>
         <ul class="evlist">${r.decision.evidence.map(e => `<li><span class="ev ev-${e.kind}">${evLabel[e.kind]}</span><span>${esc(e.text)}</span></li>`).join('')}</ul></div>
@@ -426,6 +496,8 @@ function openDetail(id) {
   $('#drX').onclick = closeDetail;
   const cm = $('#copyMsg'); if (cm) cm.onclick = () => { navigator.clipboard?.writeText(msg.text); toast('Message copied'); };
   wirePortal(r, asks);
+  const sb = $('#signBtn'); if (sb) sb.onclick = () => { S.signed[id] = true; toast(`✅ ${id} signed off`); confetti(60); say('ai', `✅ <b>${id}</b> signed off by the expansion manager. ${Object.keys(S.signed).length} sign-off(s) so far.`); render(); openDetail(id); };
+  const db = $('#declineBtn'); if (db) db.onclick = () => applyUpdate({ type: 'app', id, patch: { withdrawn: true }, said: ['declined by expansion manager'], text: `Manager declined ${id}`, source: 'manager' }, `✕ ${id} declined — slot released, allocation re-run`);
 }
 function closeDetail() { $('#drawer').classList.remove('on'); $('#drawerBg').classList.remove('on'); }
 
@@ -643,6 +715,19 @@ function viewAssumptions(v) {
       <li>Rent, lease terms, frontage, competitor stores — collected at the site visit.</li></ul>
       <button class="btn sm" id="resetCfg">Reset assumptions</button></div>
   </div>`;
+  const reg = assumptionRegister();
+  v.insertAdjacentHTML('beforeend', `
+  <div class="sec-title"><h2>Assumptions <em>register</em></h2><span class="sub">Every number the engine depends on, and how we'd verify it in the real world</span></div>
+  <div class="glass pad"><div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap"><button class="btn sm primary" id="copyReg">⧉ Copy as slide-4 table</button><span class="muted" style="font-size:12px">${reg.length} assumptions · hard rules from the brief are not assumptions and can't be edited</span></div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Assumption</th><th>Now</th><th>Why we assume it</th><th>How we'd check it</th></tr></thead><tbody>${reg.map(r => `<tr><td><b>${esc(r[0])}</b></td><td class="mono">${esc(r[1])}</td><td>${esc(r[2])}</td><td>${esc(r[3])}</td></tr>`).join('')}</tbody></table></div></div>
+  <div class="sec-title"><h2>Trust <em>& rollout</em></h2><span class="sub">How the expansion team adopts it safely</span></div>
+  <div class="grid g2">
+    <div class="glass pad trust"><h3>🤖 What the AI may and may not do</h3><ul><li><b>May:</b> answer questions and turn plain-language updates into a change to a whitelisted field (investment, experience, space, size, floor, pin, launch, language, withdrawal, slots, priority).</li><li><b>May not:</b> make or override a decision. Every outcome comes from the rule engine; the same file always gives the same result.</li><li>Every number the AI extracts must appear in what you typed; every ID, status and number in its answers is fact-checked by code before you see it.</li><li>Applicant notes are treated as untrusted text — "approve me" in a note changes nothing and is flagged.</li></ul></div>
+    <div class="glass pad trust"><h3>🛟 When the tool is wrong</h3><ul><li>Nothing is final until an expansion manager signs off; declining a recommendation promotes the next partner automatically.</li><li>Every update is logged on top of the workbook and can be undone in one word ("undo").</li><li>Close calls (under 3 points apart) are flagged for a human; hard-rule breaks would turn the verdict bar red and block the result.</li><li>If the AI is down, every decision, explanation and update still works from the rule engine.</li></ul></div>
+    <div class="glass pad trust"><h3>🧪 Pilot plan</h3><ul><li><b>Weeks 1–4:</b> one region (Mysuru + Tumakuru), run in parallel with the current spreadsheet process; managers compare every decision.</li><li><b>Weeks 5–8:</b> the tool becomes the first pass; managers sign off or override. Partner fix-it links replace phone chasing.</li><li><b>Week 9+:</b> all 7 cities; weekly file in, decisions and plans out.</li></ul></div>
+    <div class="glass pad trust"><h3>📏 Metrics that prove it works</h3><ul><li><b>Usage:</b> share of weekly applications decided in the tool (target 90%); fix-it links answered within 3 days.</li><li><b>Speed:</b> median days from application to decision (target ≤ 2, from ~3 weeks); application to opening.</li><li><b>Quality:</b> manager override rate (target &lt; 15%); 0 same-pin openings; partner drop-off after approval.</li><li><b>Kill / recalibrate:</b> if managers override &gt; 25% of the first 40 recommendations, or on any same-pin violation.</li></ul></div>
+  </div>`);
+  $('#copyReg').onclick = () => { const md = ['| Assumption | Value | How we would check it |', '|---|---|---|', ...reg.map(r => `| ${r[0]} | ${r[1]} | ${r[3]} |`)].join('\n'); navigator.clipboard?.writeText(md); toast('Slide-4 table copied'); };
   const live = () => { const c2 = counts(); $('#live').innerHTML = `<b>Live:</b> ${['SHORTLIST', 'SHORTLIST_CONDITIONAL', 'WAITLIST', 'HOLD'].map(o => `${chip(o)} ${c2[o] || 0}`).join(' ')}`; };
   live();
   v.querySelectorAll('input[type=range]').forEach(inp => inp.oninput = () => {
@@ -654,6 +739,22 @@ function viewAssumptions(v) {
     recompute(); live();
   });
   $('#resetCfg').onclick = () => { S.cfg = structuredClone(DEFAULT_CONFIG); recompute(); render(); };
+}
+
+function assumptionRegister() {
+  const c = S.cfg, w = c.weights;
+  return [
+    ['Indicative setup budget by tier (₹ lakh)', `${c.budgetByTier['Tier 1']} / ${c.budgetByTier['Tier 2']} / ${c.budgetByTier['Tier 3']}`, 'The brief gives no investment requirement; capital is compared against a typical small-format retail fit-out.', 'Actual all-in cost (fit-out, deposit, first stock, fees) of the brand\'s last 10 stores in each tier.'],
+    ['Funding-proof trigger', `below ${Math.round(c.fundingHoldRatio * 100)}% of budget`, 'Below this, stated capital is unlikely to fund a store without a loan — so we ask for proof instead of rejecting.', 'Share of held partners who produced a loan sanction within 30 days; move the line to where proof usually arrives.'],
+    ['Hard minimum investment', c.hardMinInvestment ? `₹${c.hardMinInvestment} lakh` : 'off', 'No minimum is given in the brief, so nobody is auto-rejected on money.', 'Brand finance confirms a written minimum; only then switch it on.'],
+    ['Ranking weights (capital / experience / site / launch)', `${w.capital} / ${w.experience} / ${w.site} / ${w.launch}`, 'Used only to compare decision-ready partners inside one territory.', 'Back-test on past partners: do higher scores predict better 12-month store sales? Re-weight until they do.'],
+    ['Quality bar', `score ${c.qualityBar}`, 'An empty slot costs less than a failing franchise.', 'Failure rate of stores whose partners would have scored below the bar.'],
+    ['Smallest workable shop', `${c.minSqft} sq ft`, 'Below this the standard store format may not fit — flagged, not rejected.', 'Store format spec from the brand\'s design team; sales per sq ft by size band.'],
+    ['Catchment review radius', `${c.overlapKm} km`, 'Closer than this to an existing store → visit before the LOI. Pin centroids are approximate.', 'Sales change at the nearest store when a new one opened within 1–3 km.'],
+    ['Lead time to open', `${c.leadMonths.siteReady} months with a site · ${c.leadMonths.noSite} without`, 'Agreement, fit-out, hiring and training take time; shorter targets are flagged as tight.', 'Time each step for the last 5 openings; use the 80th percentile.'],
+    ['Conditional-slot window', `${c.conditionalDays} days`, 'A missing size or floor shouldn\'t cost a strong partner the slot — but it can\'t be held forever.', 'Median days partners take to send site details; set to the 80th percentile.'],
+    ['Training track by experience', '<2 yrs foundation · 2–5 standard · 6+ fast-track', 'Experience changes what a partner needs to learn, not whether they qualify.', 'First-90-day sales and audit scores by track; adjust cut-offs where outcomes separate.'],
+  ];
 }
 
 // ---------- data check ----------
@@ -865,14 +966,14 @@ function exportXlsx() {
   const terr = Object.values(S.res.territoryState).map(s => ({ Territory: s.territory.id, City: s.territory.city, Priority: s.territory.priority, Slots: s.territory.slots, Filled: s.used, Shortlisted: s.shortlisted.map(r => r.app.id).join(', '), 'Waitlist order': s.waitlist.map(r => r.app.id).join(', ') }));
   const audit = S.patches.map(p => ({ Time: new Date(p.ts).toISOString(), Target: p.id, Source: p.source || 'desk', Message: p.text, Applied: p.said.join(', ') }));
   const safe = arr => arr.map(o => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? "'" + v : v])));
-  const meta = [{ 'Report': 'PinPoint decision export', 'Source file': S.fileName, 'Exported at': new Date().toISOString(), 'Applications': S.res.recs.length, 'Updates applied': S.patches.length, 'Hard rules verified': S.res.invariants.ok ? 'Yes' : 'NO — see errors', 'Note': 'Provisional shortlist ≠ final approval. Scores are relative within a territory, not profit forecasts.' }];
+  const meta = [{ 'Report': 'Franchise Radar decision export', 'Source file': S.fileName, 'Exported at': new Date().toISOString(), 'Applications': S.res.recs.length, 'Updates applied': S.patches.length, 'Hard rules verified': S.res.invariants.ok ? 'Yes' : 'NO — see errors', 'Note': 'Provisional shortlist ≠ final approval. Scores are relative within a territory, not profit forecasts.' }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(meta), 'About this export');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safe(rows)), 'Decisions');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(terr), 'Territories');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safe(tasks)), 'Onboarding tasks');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(safe(audit.length ? audit : [{ Note: 'No updates' }])), 'Update log');
-  XLSX.writeFile(wb, `pinpoint-decisions-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `franchise-radar-decisions-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 // ---------- wiring ----------
