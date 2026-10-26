@@ -619,3 +619,4 @@ body.noscroll { overflow: hidden; }
 .hero3 h1 .tri { color: #fff; }
 .bento { grid-auto-rows: minmax(150px, auto); }
 .hcity, .pf { animation: none !important; opacity: 1 !important; }
+.bub.ai { overflow-wrap: anywhere; } .bub .cmp { table-layout: auto; } .bub .cmp td { padding: 4px 3px; } .bub .cmp .pill { white-space: normal; font-size: 10.5px; padding: 2px 7px; } .bub .cmp.diff td:nth-child(3) { width: 12px; }
