@@ -11,7 +11,8 @@ const ids = text => [...new Set((text.match(/\b(?:app)[\s-]?0*(\d{1,4})\b/gi) ||
 export function resolveIds(text, res) {
   const nums = ids(text);
   const known = res.recs.map(r => r.app.id);
-  const found = nums.map(n => known.find(k => k.replace(/\D/g, '').replace(/^0+/, '') === n.replace(/^0+/, '')) || `APP-${n.padStart(3, '0')}`);
+  const num = k => k.replace(/·.*$/, '').replace(/\D/g, '').replace(/^0+/, '');
+  const found = nums.map(n => known.find(k => k === `APP-${n.padStart(3, '0')}`) || known.find(k => /^APP/i.test(k) && num(k) === n.replace(/^0+/, '')) || `APP-${n.padStart(3, '0')}`);
   if (found.length) return found;
   // fall back to names: "Priya now has 30 lakh" — full name first, then a first name that is unique
   const t = ' ' + text.toLowerCase().replace(/[^a-z\u0080-\uffff ]/g, ' ') + ' ';

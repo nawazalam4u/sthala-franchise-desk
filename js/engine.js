@@ -177,6 +177,7 @@ const NOTE_SIGNALS = [
   { re: /relocat|moving|shift(ing)? to|transfer/i, key: 'commitment', text: 'Talks about moving — confirm long-term commitment to this location.' },
   { re: /multiple|more than one|2 stores|two stores|second store|another store/i, key: 'multi_unit', text: 'Interested in more than one store — possible multi-unit partner.' },
   { re: /urgent|asap|immediately|quick/i, key: 'urgency', text: 'Wants to move fast — keen, but do not skip diligence.' },
+  { re: /ignore (all|the|previous|any)|approve me|approve my|disregard|override|system prompt|you must approve/i, key: 'injection', text: 'Notes contain instructions aimed at the system — treated as plain applicant text; rules unaffected. Flag for a human to review.' },
   { re: /not sure|maybe|unsure|might|tentative|thinking/i, key: 'uncertain', text: 'Sounds tentative — confirm intent before investing team time.' },
   { re: /ground|upper|first floor|mall|sq ?ft|square/i, key: 'site_mentioned', text: 'Notes mention site details — cross-check against the structured fields.' },
 ];
@@ -360,7 +361,7 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
       let best = null;
       for (const st of stores) { const sg = geo[st.pin]; if (!sg || st.pin === a.pin) continue; const d = haversineKm(g, sg); if (!best || d < best.km) best = { store: st, km: Math.round(d * 10) / 10 }; }
       r.nearestStore = best;
-      if (best && best.km < cfg.overlapKm) r.flags.push({ code: 'CATCHMENT_OVERLAP', text: `~${best.km} km from existing store ${best.store.id} (${best.store.pin}) — catchments likely overlap; cannibalisation review before LOI.` });
+      if (best && best.km < cfg.overlapKm) r.flags.push({ code: 'CATCHMENT_OVERLAP', text: `Pin centre is ~${best.km} km from existing store ${best.store.id} (${best.store.pin}) — approximate, so treat as a cannibalisation risk to check on a site visit before the LOI, not as proof.` });
     } else if (city) {
       const same = stores.filter(st => st.city === city && st.pin !== a.pin);
       if (same.length) r.flags.push({ code: 'CATCHMENT_UNKNOWN', text: `${same.length} existing store(s) in ${city}; exact distance not available — manual catchment check.` });
@@ -482,7 +483,7 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
     for (let i = 0; i < sl.length; i++) for (let j = i + 1; j < sl.length; j++) {
       const d = haversineKm(geo[sl[i].app.pin], geo[sl[j].app.pin]);
       if (d < cfg.overlapKm) for (const [a, b] of [[sl[i], sl[j]], [sl[j], sl[i]]])
-        a.flags.push({ code: 'NEW_STORE_OVERLAP', text: `~${Math.round(d * 10) / 10} km from fellow shortlisted ${b.app.id} (${b.app.pin}) — sequence openings or review catchments.` });
+        a.flags.push({ code: 'NEW_STORE_OVERLAP', text: `Pin centre ~${Math.round(d * 10) / 10} km from fellow shortlisted ${b.app.id} (${b.app.pin}) — approximate; review both catchments together.` });
     }
   }
 
@@ -520,7 +521,7 @@ export function explain(r, cfg) {
 
   switch (o) {
     case 'SHORTLIST':
-      headline = `Provisionally shortlisted for ${t.id} (${t.city}) — ranked #${r.territoryRank} of ${r.territoryField} for ${t.slots} slot(s).`;
+      headline = r.territoryField === 1 ? `Provisionally shortlisted for ${t.id} (${t.city}) — the only decision-ready candidate, so no ranking was needed (${t.slots} slot(s)).` : `Provisionally shortlisted for ${t.id} (${t.city}) — ranked #${r.territoryRank} of ${r.territoryField} for ${t.slots} slot(s).`;
       next = ['Start partner due diligence (KYC, proof of funds)', 'Site visit and catchment check', 'Issue Letter of Intent after both pass']; break;
     case 'SHORTLIST_CONDITIONAL':
       headline = `Shortlisted for ${t.id} on condition: ${cond.map(c => c.ask.replace(/\.$/, '')).join('; ')} within ${cfg.conditionalDays} days, or the slot passes to the next waitlisted partner.`;
