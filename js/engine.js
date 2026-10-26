@@ -60,6 +60,7 @@ const low = v => s(v).toLowerCase();
 export function normPin(v) {
   if (v === null || v === undefined || v === '') return { pin: null, raw: '' };
   let t = typeof v === 'number' ? String(Math.round(v)) : s(v).replace(/\.0+$/, '').replace(/[\s-]/g, '');
+  if (!/^\d{6}$/.test(t)) { const m = s(v).match(/(?:^|\D)(\d{3})\s?(\d{3})(?!\d)/g); if (m && m.length === 1) t = m[0].replace(/\D/g, ''); }
   return { pin: /^\d{6}$/.test(t) ? t : null, raw: s(v) };
 }
 
@@ -128,9 +129,22 @@ export function isSampleTerritory(r) {
     normNum(r.slots).value === SAMPLE_TER.slots && low(r.city) === 'mysuru';
 }
 
+const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+// "Jan 2027" / "March 2027" → months from today; plain numbers stay months
+export function normLaunch(v, today = new Date()) {
+  const t = low(v), m = t.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*'?(\d{2,4})\b/);
+  if (m) { let y = +m[2]; if (y < 100) y += 2000; const diff = (y - today.getFullYear()) * 12 + MONTHS.indexOf(m[1]) - today.getMonth(); return { value: Math.max(0, diff), raw: s(v), note: `"${s(v)}" read as ${Math.max(0, diff)} month(s) from today` }; }
+  if (/asap|immediate|right away/.test(t)) return { value: 1, raw: s(v), note: `"${s(v)}" read as about 1 month` };
+  const n = normNum(v);
+  if (Number.isFinite(n.value) && n.value > 60) return { value: NaN, raw: s(v) };
+  return n;
+}
+
 export function normaliseApplication(r) {
-  const pin = normPin(r.pin), inv = normNum(r.investment), exp = normNum(r.experience),
-    size = normNum(r.size), launch = normNum(r.launch);
+  const pin = normPin(r.pin), exp = normNum(r.experience), size = normNum(r.size), launch = normLaunch(r.launch);
+  const inv = normNum(r.investment);
+  // amounts typed in rupees ("₹25,00,000", "3500000") instead of lakh
+  if (Number.isFinite(inv.value) && inv.value >= 1000) { inv.note = `"${inv.raw}" read as rupees → ₹${Math.round(inv.value / 1e5 * 10) / 10} lakh`; inv.value = Math.round(inv.value / 1e5 * 10) / 10; }
   return {
     id: s(r.id).toUpperCase() || `ROW-${r.row ?? '?'}`, idMissing: !s(r.id), name: s(r.name), row: r.row,
     cityRaw: s(r.city), city: normCity(r.city), stateRaw: s(r.state),
@@ -140,7 +154,7 @@ export function normaliseApplication(r) {
     business: s(r.business), spaceRaw: s(r.space), space: normSpace(r.space),
     size: size.value, sizeRaw: size.raw, floorRaw: s(r.floor), floor: normFloor(r.floor),
     launch: launch.value, launchRaw: launch.raw, langRaw: s(r.language), language: normLang(r.language),
-    notes: s(r.notes), withdrawn: !!r.withdrawn,
+    notes: s(r.notes), withdrawn: !!r.withdrawn, readNotes: [inv.note, launch.note].filter(Boolean),
   };
 }
 
@@ -154,7 +168,7 @@ export function normaliseTerritory(r) {
     id: s(r.id).toUpperCase(), row: r.row, cityRaw: s(r.city), city: normCity(r.city), state: s(r.state),
     pins, badPins, tierRaw: s(r.tier), tier: /1/.test(r.tier) ? 'Tier 1' : /2/.test(r.tier) ? 'Tier 2' : /3/.test(r.tier) ? 'Tier 3' : null,
     slots: Number.isFinite(slots.value) ? Math.max(0, Math.floor(slots.value)) : null, slotsRaw: slots.raw,
-    priority: pr.startsWith('h') ? 'High' : pr.startsWith('m') ? 'Medium' : pr.startsWith('l') ? 'Low' : null,
+    priority: /^(h|p1|1\b|urgent|top|critical)/.test(pr) ? 'High' : /^(m|p2|2\b|normal)/.test(pr) ? 'Medium' : /^(l|p3|3\b)/.test(pr) ? 'Low' : null, priorityRaw: s(r.priority), slotsFractional: Number.isFinite(slots.value) && slots.value % 1 !== 0,
   };
 }
 
@@ -235,7 +249,8 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
     budgetByTier: { ...DEFAULT_CONFIG.budgetByTier, ...(cfgIn.budgetByTier || {}) },
     leadMonths: { ...DEFAULT_CONFIG.leadMonths, ...(cfgIn.leadMonths || {}) } };
   const apps = input.applications.map(a => a.id !== undefined && a.investment !== undefined && 'investmentRaw' in a ? a : normaliseApplication(a));
-  const terrs = input.territories.map(t => 'badPins' in t ? t : normaliseTerritory(t));
+  const terrs = input.territories.map(t => 'badPins' in t ? { ...t } : normaliseTerritory(t));
+  { const seen = {}; for (const t of terrs) { seen[t.id] = (seen[t.id] || 0) + 1; if (seen[t.id] > 1 && !t.idOriginal) { t.idOriginal = t.id; t.id = `${t.id}·${t.city || 'R' + t.row}`; } } }
   const stores = (input.stores && input.stores.length ? input.stores : FIXED_STORES).map(x => ({ ...x, pin: normPin(x.pin).pin, city: normCity(x.city) || x.city }));
   const dataIssues = [];
 
@@ -245,9 +260,12 @@ export function evaluate(input, cfgIn = {}, geo = {}) {
   const seenTid = new Set();
   for (const t of terrs) {
     if (!t.id) dataIssues.push({ sev: 'high', scope: 'territory', ref: `row ${t.row}`, text: 'Territory row has no Territory ID.' });
-    if (seenTid.has(t.id)) dataIssues.push({ sev: 'high', scope: 'territory', ref: t.id, text: `Duplicate Territory ID ${t.id}.` });
+    if (t.idOriginal) dataIssues.push({ sev: 'high', scope: 'territory', ref: t.idOriginal, text: `Territory ID ${t.idOriginal} is used twice — the second one is shown as ${t.id} until the brand renames it.` });
     seenTid.add(t.id);
     if (t.badPins.length) dataIssues.push({ sev: 'medium', scope: 'territory', ref: t.id, text: `Malformed pin code(s) ignored: ${t.badPins.join(', ')}.` });
+    if (!t.pins.length) dataIssues.push({ sev: 'high', scope: 'territory', ref: t.id, text: 'Territory lists no pin codes — no applicant can be matched to it.' });
+    if (t.slotsFractional) dataIssues.push({ sev: 'medium', scope: 'territory', ref: t.id, text: `Open slots "${t.slotsRaw}" is not a whole number — rounded down to ${t.slots}.` });
+    if (t.priority && t.priorityRaw && !/^(high|medium|low)$/i.test(t.priorityRaw)) dataIssues.push({ sev: 'low', scope: 'territory', ref: t.id, text: `Priority "${t.priorityRaw}" read as ${t.priority}.` });
     if (t.slots === null) dataIssues.push({ sev: 'high', scope: 'territory', ref: t.id, text: `Open slots "${t.slotsRaw}" is not a number — treated as 0 until fixed.` });
     if (!t.priority) dataIssues.push({ sev: 'low', scope: 'territory', ref: t.id, text: 'Priority missing/unrecognised — treated as Low.' });
     const exp = t.city && CITIES[t.city];
@@ -569,6 +587,7 @@ export function explain(r, cfg) {
   }
 
   // evidence
+  for (const n of a.readNotes || []) tag('derived', `Read from the form: ${n}.`);
   tag('fact', `${a.city || a.cityRaw || '—'} · pin ${a.pin || a.pinRaw || '—'} · ₹${fmt(a.investment)} lakh · ${fmt(a.experience)} yrs retail · space ${a.space || '—'}${a.size ? `, ${a.size} sq ft` : ''}${a.floor ? `, ${a.floor}` : ''} · launch ${fmt(a.launch)} mo`);
   if (t) tag('derived', `Pin ${a.pin} → ${t.id} (${t.city}, ${t.tier}, ${t.priority} priority, ${t.slots} open slot(s)).`);
   if (r.store) tag('fact', `Existing store ${r.store.id} at pin ${r.store.pin} (opened ${r.store.year}).`);

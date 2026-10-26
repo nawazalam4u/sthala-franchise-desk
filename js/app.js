@@ -51,7 +51,7 @@ function loadBytes(bytes, name) {
     $('#fileName').hidden = false; $('#fileName').textContent = `${name} · ${S.base.applications.length} applications`;
     $('#btnExport').hidden = false;
     S.tab = 'overview';
-    cinematic(S.res, name).then(() => { render(); if (S.res.invariants.ok) confetti(80); });
+    cinematic(S.res, name).then(() => { if (S.pendingTab) { S.tab = S.pendingTab; S.pendingTab = null; } render(); if (S.res.invariants.ok) confetti(80); });
     $('#cpLog').innerHTML = '';
     say('ai', `<div class="ans-head">Workbook read ✓</div><b>${esc(name)}</b>: ${S.base.applications.length} applications, ${S.base.territories.length} territories, ${S.res.stores.length} existing stores.${S.report.samplesExcluded.length ? ' Skipped the grey template example row(s).' : ''} ${S.res.invariants.ok ? '<br>🛡 All three hard rules hold.' : '<br>⚠ Rule check failed — see Data check.'}${S.report.warnings.length ? `<br>⚠ ${S.report.warnings.map(esc).join('<br>⚠ ')}` : ''}${S.res.dataIssues.filter(d => d.sev === 'high').length ? `<br>⚠ ${S.res.dataIssues.filter(d => d.sev === 'high').length} territory master-data problem(s) — see Data check.` : ''}<br><br>${helpChips()}`);
     fillGeo();
@@ -150,73 +150,111 @@ function render() {
 }
 function counts() { const c = {}; S.res.recs.forEach(r => c[r.outcome] = (c[r.outcome] || 0) + 1); return c; }
 
+const KA_OUTLINE = [[74.1,15.0],[74.5,14.3],[74.7,13.3],[74.85,12.8],[75.3,12.1],[75.9,11.9],[76.6,11.6],[77.3,11.8],[77.8,12.2],[78.5,12.7],[78.2,13.3],[77.8,13.9],[77.2,14.3],[76.9,15.0],[77.4,15.6],[77.5,16.4],[77.3,17.2],[77.6,17.8],[77.0,18.4],[76.4,17.9],[75.6,17.5],[75.0,16.9],[74.3,16.6],[74.2,15.9],[74.0,15.4]];
+const kp = ([lng, lat]) => [(lng - 73.8) * 100, (18.6 - lat) * 100];
 const CITY_XY = { Bengaluru: [12.97, 77.59], Mysuru: [12.30, 76.64], Mangaluru: [12.87, 74.84], 'Hubballi-Dharwad': [15.36, 75.12], Belagavi: [15.85, 74.50], Tumakuru: [13.34, 77.10], Davanagere: [14.46, 75.92] };
 const proj = ([lat, lng]) => [(lng - 74.1) * 108, (16.3 - lat) * 108];
+const RAIL = [['Bengaluru', 'Mysuru'], ['Bengaluru', 'Tumakuru'], ['Tumakuru', 'Davanagere'], ['Davanagere', 'Hubballi-Dharwad'], ['Hubballi-Dharwad', 'Belagavi'], ['Mysuru', 'Mangaluru'], ['Mangaluru', 'Hubballi-Dharwad']];
+const CITY_FACT = { Bengaluru: 'Tier 1 · pins 560xxx · 5 stores today', Mysuru: 'Tier 2 · pins 570xxx · 2 stores', Mangaluru: 'Tier 2 · pins 575xxx · 1 store', 'Hubballi-Dharwad': 'Tier 2 · pins 580xxx · 1 store', Belagavi: 'Tier 2 · pins 590xxx · 1 store', Tumakuru: 'Tier 3 · pins 572xxx · no store yet', Davanagere: 'Tier 3 · pins 577xxx · no store yet' };
 function heroMap() {
-  const cities = Object.entries(CITY_XY).map(([c, ll]) => { const [x, y] = proj(ll); return { c, x, y }; });
-  const dots = [];
-  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
-  cities.forEach(({ x, y }, ci) => { for (let i = 0; i < (ci === 0 ? 14 : 6); i++) dots.push({ x: x + (rnd() - .5) * 60, y: y + (rnd() - .5) * 60, d: (rnd() * 3).toFixed(2), tx: x, ty: y }); });
-  return `<svg class="kmap" viewBox="0 0 400 460" aria-hidden="true">
-    <defs><radialGradient id="glow"><stop offset="0" stop-color="#e6a93a" stop-opacity=".55"/><stop offset="1" stop-color="#e6a93a" stop-opacity="0"/></radialGradient></defs>
-    ${cities.map(({ x, y }, i) => cities.slice(i + 1).map(o => `<line x1="${x}" y1="${y}" x2="${o.x}" y2="${o.y}" class="kline"/>`).join('')).join('')}
-    ${dots.map(p => `<circle class="appdot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.6" style="--tx:${(p.tx - p.x).toFixed(1)}px;--ty:${(p.ty - p.y).toFixed(1)}px;animation-delay:${p.d}s"/>`).join('')}
-    ${cities.map(({ c, x, y }, i) => `<g class="city" style="animation-delay:${.3 + i * .18}s"><circle cx="${x}" cy="${y}" r="26" fill="url(#glow)"/><circle cx="${x}" cy="${y}" r="6" class="cdot"/><text x="${x + 10}" y="${y + 4}">${c}</text></g>`).join('')}
+  const P = c => { const [lat, lng] = CITY_XY[c]; return kp([lng, lat]); };
+  const outline = KA_OUTLINE.map(kp).map(([x, y]) => `${x.toFixed(0)},${y.toFixed(0)}`).join(' ');
+  const rails = RAIL.map(([a, b], i) => { const [x1, y1] = P(a), [x2, y2] = P(b); const mx = (x1 + x2) / 2 + (y2 - y1) * .12, my = (y1 + y2) / 2 - (x2 - x1) * .12; return { d: `M${x1},${y1} Q${mx},${my} ${x2},${y2}`, i }; });
+  return `<svg class="kmap2" viewBox="0 0 520 720" aria-label="Karnataka expansion network">
+    <defs><radialGradient id="cg"><stop offset="0" stop-color="#ffd27a" stop-opacity=".7"/><stop offset="1" stop-color="#ffd27a" stop-opacity="0"/></radialGradient>
+      <linearGradient id="kaf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffd27a" stop-opacity=".10"/><stop offset="1" stop-color="#e2403a" stop-opacity=".08"/></linearGradient></defs>
+    <polygon points="${outline}" class="ka2"/>
+    ${rails.map(r => `<path id="rail${r.i}" d="${r.d}" class="rail"/><path d="${r.d}" class="rail-ties"/>`).join('')}
+    ${rails.map(r => `<circle r="5" class="train"><animateMotion dur="${5 + r.i * .7}s" repeatCount="indefinite" rotate="auto" begin="${r.i * .4}s"><mpath href="#rail${r.i}"/></animateMotion></circle>`).join('')}
+    ${Object.keys(CITY_XY).map((c, i) => { const [x, y] = P(c); const big = c === 'Bengaluru'; const left = ['Tumakuru', 'Mangaluru'].includes(c);
+      return `<g class="hcity" data-hcity="${c}" style="animation-delay:${.2 + i * .15}s"><circle cx="${x}" cy="${y}" r="${big ? 42 : 30}" fill="url(#cg)" class="halo"/><circle cx="${x}" cy="${y}" r="${big ? 11 : 8}" class="node"/>
+        <text x="${left ? x - 16 : x + 16}" y="${y + 5}" text-anchor="${left ? 'end' : 'start'}" class="hlabel">${c}</text><title>${c} — ${CITY_FACT[c]}</title></g>`; }).join('')}
   </svg>`;
 }
+function skyline() {
+  // Vidhana Soudha · Mysuru Palace · Gol Gumbaz silhouettes, kept deliberately simple
+  return `<svg class="skyline" viewBox="0 0 1200 120" preserveAspectRatio="none" aria-hidden="true"><path d="M0 120 V96 H60 V82 H90 V96 H140 V70 H150 V60 H156 V70 H170 V96 H240
+  V64 H250 L262 44 L274 64 H284 V96 H300 V58 H318 L330 30 C334 20 346 20 350 30 L362 58 H380 V96 H392 V66 H404 L416 46 L428 66 H440 V96 H520
+  V84 H540 V56 H556 L566 38 L576 56 H590 V84 H610 V96 H660 V60 C660 34 700 22 720 22 C740 22 780 34 780 60 V96 H800 V74 H812 L818 60 L824 74 H836 V96 H900
+  V72 H950 V58 H1000 V72 H1040 V96 H1100 V86 H1200 V120 Z" /></svg>`;
+}
+const TRI = [['Every partner, decided.', 'en'], ['ಪ್ರತಿಯೊಬ್ಬ ಪಾಲುದಾರನಿಗೂ ನಿರ್ಧಾರ.', 'kn'], ['हर पार्टनर का फ़ैसला।', 'hi']];
 
 function renderLanding(err) {
-  $('#main').innerHTML = `<section class="hero2">
+  $('#main').innerHTML = `<section class="hero3 glass tiltzone">
     <div class="hero-copy">
-      <span class="eyebrow">● Ops Hackathon · Case 1 · Franchise partner acquisition, geo-selection & onboarding</span>
-      <h1 class="reveal"><span>A brand wants more franchise stores.</span><span>Hundreds apply. Pin codes clash.</span><span><em>Franchise Radar decides who, where — and what's next.</em></span></h1>
-      <p class="lead reveal-late">Upload the applications and territories. In seconds every partner gets a decision, the reason behind it, a slot (or a better pin), and a week-by-week path to an open, trained store — in Kannada, Hindi or English.</p>
-      <div class="hero-cta reveal-late"><button class="btn primary pulse big" id="lpDemo">▶ Run the demo</button><button class="btn ghost-d big" id="lpUpload">Upload your workbook</button></div>
-      <div class="drop reveal-late" id="drop"><div class="ic">📥</div><div><b>Or drop the judges' .xlsx here</b><span>The official template, as-is. Nothing to rename.</span></div></div>
+      <span class="eyebrow">● Case 1 · Franchise partner acquisition, geo-selection & onboarding · Karnataka</span>
+      <h1><span class="tri" id="tri">${TRI[0][0]}</span><em>Who opens where — and how they get ready.</em></h1>
+      <p class="lead">Drop in the judges' workbook. In milliseconds every applicant gets a decision, the reason, a store slot or a better pin code, and a week-by-week path to an open, trained store — explained in <b>ಕನ್ನಡ</b>, <b>हिन्दी</b> and <b>English</b>.</p>
+      <div class="hero-cta"><button class="btn primary pulse big" id="lpDemo">▶ Run the demo</button><button class="btn ghost-d big" id="lpUpload">Upload your workbook</button></div>
+      <div class="drop" id="drop"><div class="ic">📥</div><div><b>Or drop the .xlsx here</b><span>Official template as-is — or any brand's sheet with similar columns.</span></div></div>
       ${err ? `<div class="banner bad" style="margin-top:12px">${esc(err)}</div>` : ''}
     </div>
-    <div class="hero-art">${heroMap()}<div class="art-cap">Applicants (dots) converging on 7 expansion cities</div></div>
+    <div class="hero-art">${heroMap()}<div class="art-cap">🚆 7 expansion cities on one network · tap a city to explore it</div></div>
+    ${skyline()}
+  </section>
+  <section class="proof">
+    ${[['0', 'hard-rule violations', 'across every test file'], ['31,050', 'applications stress-tested', '900 random hostile workbooks'], ['57 + 20', 'automated + acceptance tests', 'all passing'], ['< 50 ms', 'to decide 1,500 rows', 'in your browser'], ['3', 'languages', 'ಕನ್ನಡ · हिन्दी · English'], ['7', 'cities · 1 rulebook', 'never two stores in one pin']]
+      .map(([v, l, s], i) => `<div class="pf glass" style="animation-delay:${i * .08}s"><b>${v}</b><span>${l}</span><small>${s}</small></div>`).join('')}
   </section>
   <section class="problem">
-    <div class="ph"><span class="k">THE PROBLEM</span><h2>Expansion leaks at every step</h2></div>
+    <div class="ph"><span class="k">THE PROBLEM</span><h2>Franchise expansion leaks at every step</h2></div>
     <div class="pcards">
-      <div class="pc c1"><b>🐢 Slow</b><p>Every application is checked by hand against territories, existing stores and slots — weeks of spreadsheets.</p></div>
-      <div class="pc c2"><b>🕳 Leaky</b><p>A great partner with a taken pin gets a "no" instead of a better pin. Incomplete forms just sit there.</p></div>
-      <div class="pc c3"><b>💥 Risky</b><p>Two stores in one pin, too many partners for a territory, new stores eating old stores' sales.</p></div>
-      <div class="pc c4"><b>🧭 Unready</b><p>Accepted partners get no clear plan — so stores open late, with untrained staff.</p></div>
+      <div class="pc c1 tilt"><b>🐢 Slow</b><p>Each application is checked by hand against territories, existing stores and open slots — weeks of spreadsheets.</p></div>
+      <div class="pc c2 tilt"><b>🕳 Leaky</b><p>A strong partner whose pin is taken hears "no" instead of "try this pin". Half-filled forms just sit there.</p></div>
+      <div class="pc c3 tilt"><b>💥 Risky</b><p>Two stores in one pin code, too many partners for a territory, new stores eating old stores' sales.</p></div>
+      <div class="pc c4 tilt"><b>🧭 Unready</b><p>Accepted partners get no clear plan — stores open late with untrained staff.</p></div>
     </div>
   </section>
-  <section class="how">
-    <div class="ph"><span class="k">WHAT FRANCHISE RADAR DOES</span><h2>Four gates, one rulebook, zero guesswork</h2></div>
-    <div class="levels">
-      <div class="lvl l1"><span class="k">01 · READ</span><b>Takes the template as-is</b><p>Finds the sheets by their headers, skips the grey sample row, cleans "570 001", "1.2 crore", "five years".</p><span class="emoji">📄</span></div>
-      <div class="lvl l2"><span class="k">02 · CHECK</span><b>Partner, site and location — separately</b><p>A strong partner with no shop is pre-qualified, not rejected. Missing facts = a specific question, never a silent no.</p><span class="emoji">🚦</span></div>
-      <div class="lvl l3"><span class="k">03 · ALLOCATE</span><b>Hard rules in code</b><p>One store per pin. Never on an existing store's pin. Never over a territory's slots. Verified after every change.</p><span class="emoji">🧩</span></div>
-      <div class="lvl l4"><span class="k">04 · ONBOARD</span><b>Plan + self-service</b><p>Week-by-week plan, training by experience, and a fix-it link the partner fills in on their phone.</p><span class="emoji">🚀</span></div>
+  <section class="bento-wrap">
+    <div class="ph"><span class="k">WHAT'S INSIDE</span><h2>One engine, everything the expansion team needs</h2></div>
+    <div class="bento">
+      ${[['🧠', 'Three gates, not one score', 'Location, partner and site are judged separately — a good partner with a taken pin is relocated, never rejected.', 'tall g1'],
+         ['🛡', 'Hard rules in code', 'One store per pin · never on an existing store · never over a territory\'s slots. Re-verified after every change.', 'g2'],
+         ['🎯', 'Site Scout map', 'Drag a pin anywhere in Karnataka — instant verdict: open, full, taken or contested, with Street View.', 'wide g3'],
+         ['💬', 'Copilot that can\'t lie', '"Why is APP-007 on hold?" — answered from the data. AI answers are fact-checked by code.', 'g4'],
+         ['🔁', 'Updates re-decide everyone', '"APP-012 found a ground-floor space" → the whole allocation re-runs and shows who moved.', 'g5'],
+         ['📲', 'Partner fix-it link', 'A held applicant gets a link + QR in their language and fixes their own form — the desk updates live.', 'tall g6'],
+         ['🗓', 'Onboarding plans', 'Week-by-week path to opening, training track by experience, WhatsApp-ready message.', 'g7'],
+         ['✅', 'Human sign-off', 'Nothing is final until a manager signs. Decline → the next partner is promoted automatically.', 'g8'],
+         ['🧪', 'Self-test button', 'Judges can run 180 random workbooks in their own browser and watch zero violations.', 'wide g9']]
+        .map(([e, t, d, cls]) => `<div class="bx glass tilt ${cls}"><span class="bxe">${e}</span><b>${t}</b><p>${d}</p></div>`).join('')}
+    </div>
+  </section>
+  <section class="langs glass">
+    <div><span class="k">MULTILINGUAL BY DESIGN</span><h2>Partners in Karnataka don't all read English</h2><p>Every partner message, training plan and fix-it form is ready in their preferred language.</p></div>
+    <div class="lang-cards">
+      <div class="lc"><small>ಕನ್ನಡ</small><b>ನಮಸ್ಕಾರ! ನಿಮ್ಮ ಅರ್ಜಿ ಆಯ್ಕೆಯಾಗಿದೆ.</b></div>
+      <div class="lc"><small>हिन्दी</small><b>नमस्ते! आपका आवेदन चुना गया है।</b></div>
+      <div class="lc"><small>English</small><b>Hello! Your application is shortlisted.</b></div>
     </div>
   </section>
   <section class="lab">
     <div class="ph"><span class="k">SCENARIO LAB</span><h2>Throw anything at it</h2></div>
     <div class="labrow">
-      <button class="labcard" data-scn="demo"><b>🎯 Case demo</b><span>24 applicants · every judge trap: pin clashes, existing stores, missing data, zero-slot territory</span></button>
-      <button class="labcard" data-scn="tricky"><b>🧨 Messy workbook</b><span>Renamed sheets, "1.2 crore", "570 001", duplicate IDs, a row with no ID</span></button>
-      <button class="labcard" data-scn="stress"><b>🏋️ Stress test</b><span>300 generated applicants across all 7 cities — hostile data, still zero rule breaks</span></button>
-      <button class="labcard" data-scn="random"><b>🎲 Random city mix</b><span>A brand-new random workbook every click — try to break it</span></button>
+      <button class="labcard tilt" data-scn="demo"><b>🎯 Case demo</b><span>24 applicants · every trap: pin clashes, existing stores, missing data, zero-slot territory</span></button>
+      <button class="labcard tilt" data-scn="tricky"><b>🧨 Messy workbook</b><span>Renamed sheets, "1.2 crore", "570 001", duplicate IDs, a row with no ID</span></button>
+      <button class="labcard tilt" data-scn="pharma"><b>💊 Another industry</b><span>A pharmacy chain's sheet: different headers, ₹ in rupees, "Jan 2027", "PIN-560043"</span></button>
+      <button class="labcard tilt" data-scn="stress"><b>🏋️ Stress test</b><span>300 generated applicants across all 7 cities — hostile data, zero rule breaks</span></button>
     </div>
   </section>`;
   $('#lpUpload').onclick = () => $('#fileInput').click();
   $('#lpDemo').onclick = loadDemo;
   document.querySelectorAll('[data-scn]').forEach(b => b.onclick = () => loadScenario(b.dataset.scn));
+  document.querySelectorAll('[data-hcity]').forEach(g => g.onclick = () => { S.mapCity = g.dataset.hcity; S.pendingTab = 'map'; loadDemo(); });
+  let i = 0; clearInterval(S.triTimer);
+  S.triTimer = setInterval(() => { const el = $('#tri'); if (!el) return clearInterval(S.triTimer); i = (i + 1) % TRI.length; el.classList.add('swap'); setTimeout(() => { el.textContent = TRI[i][0]; el.lang = TRI[i][1]; el.classList.remove('swap'); }, 350); }, 2600);
   const d = $('#drop');
   d.ondragover = e => { e.preventDefault(); d.classList.add('over'); };
   d.ondragleave = () => d.classList.remove('over');
   d.ondrop = e => { e.preventDefault(); d.classList.remove('over'); const f = e.dataTransfer.files[0]; if (f) readFile(f); };
-  if (!$('#cpLog').innerHTML) say('ai', `<div class="ans-head">Hi 👋 I'm the expansion copilot</div>Press <b>Run the demo</b> (or upload the judges' workbook) and ask me anything — "Why is APP-007 on hold?" — or tell me what changed: "APP-012 found a ground-floor space". I re-run the whole allocation and show what moved.`);
+  if (!$('#cpLog').innerHTML) say('ai', `<div class="ans-head">ನಮಸ್ಕಾರ · नमस्ते · Hello 👋</div>Press <b>Run the demo</b> (or upload the judges' workbook) and ask me anything — "Why is APP-007 on hold?" — or tell me what changed: "APP-012 found a ground-floor space". I re-run the whole allocation and show what moved.`);
 }
 
 async function loadScenario(k) {
   if (k === 'demo') return loadDemo();
   if (k === 'tricky') { const buf = await (await fetch('data/tricky.xlsx')).arrayBuffer(); return loadBytes(new Uint8Array(buf), 'Messy workbook (trap test)'); }
+  if (k === 'pharma') { const buf = await (await fetch('data/devil/devil1_other_industry.xlsx')).arrayBuffer(); return loadBytes(new Uint8Array(buf), 'Pharmacy chain (different headers)'); }
   const seed = k === 'stress' ? 2026 : Math.floor(Math.random() * 1e6);
   const sc = generate(seed, k === 'stress' ? { apps: 300, territories: 22, mess: 2 } : { apps: 30 + Math.floor(Math.random() * 40), territories: 6 + Math.floor(Math.random() * 6), mess: 1 });
   loadBytes(new Uint8Array(XLSX.write(toWorkbook(XLSX, sc), { type: 'array', bookType: 'xlsx' })), k === 'stress' ? 'Stress test (300 applicants)' : `Random scenario #${seed}`);
@@ -252,8 +290,6 @@ function cinematic(res, name) {
   });
 }
 
-const KA_OUTLINE = [[74.1,15.0],[74.5,14.3],[74.7,13.3],[74.85,12.8],[75.3,12.1],[75.9,11.9],[76.6,11.6],[77.3,11.8],[77.8,12.2],[78.5,12.7],[78.2,13.3],[77.8,13.9],[77.2,14.3],[76.9,15.0],[77.4,15.6],[77.5,16.4],[77.3,17.2],[77.6,17.8],[77.0,18.4],[76.4,17.9],[75.6,17.5],[75.0,16.9],[74.3,16.6],[74.2,15.9],[74.0,15.4]];
-const kp = ([lng, lat]) => [(lng - 73.8) * 100, (18.6 - lat) * 100];
 function karnatakaBoard() {
   const res = S.res, outline = KA_OUTLINE.map(kp).map(([x, y]) => `${x.toFixed(0)},${y.toFixed(0)}`).join(' ');
   const cities = Object.entries(CITY_XY).map(([c, [lat, lng]]) => {
@@ -601,8 +637,9 @@ function viewMap(v) {
   const cities = ['All', ...Object.keys(CITIES).filter(c => S.res.territories.some(t => t.city === c) || S.res.recs.some(r => r.city === c))];
   v.innerHTML = `<div class="map-bar"><span class="seg"><button data-mm="scout" class="${S.mapMode !== 'decisions' ? 'on' : ''}">🎯 Site Scout</button><button data-mm="decisions" class="${S.mapMode === 'decisions' ? 'on' : ''}">🧑‍💼 Partners</button></span>
       ${cities.map(c => `<button class="fchip ${S.mapCity === c ? 'on' : ''}" data-city="${c}">${c}</button>`).join('')}
-      <input class="search" id="pinGo" placeholder="Jump to pin…" style="flex:0 0 150px;min-width:0" maxlength="6" inputmode="numeric"></div>
-    <div class="mapwrap"><div id="map"></div>${S.mapMode !== 'decisions' ? `<div class="crosshair"><span></span></div><div class="scout" id="scout">${scoutCard(null)}</div>` : ''}</div>
+      <input class="search" id="pinGo" placeholder="Jump to pin…" style="flex:0 0 150px;min-width:0" maxlength="6" inputmode="numeric">
+      <button class="btn sm" id="mapFull" title="Full screen">⤢ Full screen</button><button class="btn sm" id="mapClose" title="Close the map (Esc)">✕ Close map</button></div>
+    <div class="mapwrap" id="mapwrap"><button class="btn sm map-x" id="mapX" aria-label="Exit full screen">✕ Close</button><div id="map"></div>${S.mapMode !== 'decisions' ? `<div class="crosshair"><span></span></div><div class="scout" id="scout">${scoutCard(null)}</div>` : ''}</div>
     <div class="legend">${S.mapMode !== 'decisions'
       ? `<span><i style="background:#23905c"></i>Open pin (free slot)</span><span><i style="background:#d18f12"></i>Territory full / not opening</span><span><i style="background:#2f6fb8"></i>Claimed by a shortlisted partner</span><span><i style="background:#a31f2a"></i>Existing store — blocked</span><span><i style="background:#7d5bd0"></i>Territory conflict</span><span class="muted">Positions = OpenStreetMap pin-code centres (approximate)</span>`
       : `<span><i style="background:#0d2b20;border:2px solid #e6a93a;border-radius:4px"></i>Existing store + ${S.cfg.overlapKm} km review ring</span>${['SHORTLIST', 'SHORTLIST_CONDITIONAL', 'PREQUALIFIED', 'WAITLIST', 'RELOCATE', 'HOLD', 'OUT_OF_PLAN'].map(o => `<span><i style="background:${toneColor[OUTCOMES[o].tone]}"></i>${OUTCOMES[o].label}</span>`).join('')}`}</div>`;
@@ -665,7 +702,13 @@ function viewMap(v) {
   const go = $('#pinGo');
   go.onkeydown = e => { if (e.key !== 'Enter') return; const p = go.value.trim(); if (!S.geo[p]) return toast(`No location known for pin ${p}`); if (S.mapMode === 'decisions') { S.mapMode = 'scout'; render(); } S.map.flyTo([S.geo[p].lat, S.geo[p].lng], 14, { duration: .8 }); };
   if (S.mapMode !== 'decisions') setTimeout(() => S.scoutUpdate && S.scoutUpdate(), 400);
+  const wrap = $('#mapwrap');
+  const setFull = on => { wrap.classList.toggle('full', on); document.body.classList.toggle('noscroll', on); setTimeout(() => S.map && S.map.invalidateSize(), 60); };
+  $('#mapFull').onclick = () => setFull(true);
+  $('#mapX').onclick = () => setFull(false);
+  $('#mapClose').onclick = closeMap;
 }
+function closeMap() { document.body.classList.remove('noscroll'); S.tab = S.prevTab && S.prevTab !== 'map' ? S.prevTab : 'overview'; render(); }
 
 // ---------- territories ----------
 function viewTerritories(v) {
@@ -982,12 +1025,33 @@ function readFile(f) { const rd = new FileReader(); rd.onload = () => loadBytes(
 
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-app]'); if (a && !e.target.closest('input')) { e.preventDefault(); openDetail(a.dataset.app); return; }
-  const t = e.target.closest('[data-tab]'); if (t) { S.tab = t.dataset.tab; render(); return; }
+  const t = e.target.closest('[data-tab]'); if (t) { if (S.tab !== t.dataset.tab) S.prevTab = S.tab; S.tab = t.dataset.tab; render(); return; }
   const q = e.target.closest('[data-q]'); if (q) { ask(q.dataset.q); return; }
   const k = e.target.closest('[data-ask]'); if (k) { closeDetail(); $('#copilot').classList.add('on'); ask(k.dataset.ask); }
 });
 $('#drawerBg').onclick = closeDetail;
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDetail(); });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('#drawer').classList.contains('on')) return closeDetail();
+  const w = $('#mapwrap'); if (w && w.classList.contains('full')) { w.classList.remove('full'); document.body.classList.remove('noscroll'); return S.map && S.map.invalidateSize(); }
+  if (S.tab === 'map') closeMap();
+});
+// premium motion: cursor-following glow + gentle 3D tilt on glass cards (skipped when reduced motion is on)
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches && matchMedia('(pointer: fine)').matches) {
+  let raf = 0, mx = 0, my = 0, tgt = null;
+  document.addEventListener('pointermove', e => {
+    mx = e.clientX; my = e.clientY; tgt = e.target.closest('.tilt, .glass.tiltzone .hero-art, .pcard, .tile, .vs, .bx, .lvl');
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      document.body.style.setProperty('--mx', mx + 'px'); document.body.style.setProperty('--my', my + 'px');
+      document.querySelectorAll('.tilting').forEach(el => { if (el !== tgt) { el.classList.remove('tilting'); el.style.transform = ''; } });
+      if (tgt) { const r = tgt.getBoundingClientRect(), px = (mx - r.left) / r.width - .5, py = (my - r.top) / r.height - .5;
+        tgt.classList.add('tilting'); tgt.style.transform = `perspective(900px) rotateX(${(-py * 6).toFixed(2)}deg) rotateY(${(px * 8).toFixed(2)}deg) translateY(-3px)`;
+        tgt.style.setProperty('--gx', ((px + .5) * 100).toFixed(1) + '%'); tgt.style.setProperty('--gy', ((py + .5) * 100).toFixed(1) + '%'); }
+    });
+  }, { passive: true });
+}
 $('#btnUpload').onclick = () => $('#fileInput').click();
 $('#fileInput').onchange = e => { const f = e.target.files[0]; if (f) readFile(f); e.target.value = ''; };
 $('#btnExport').onclick = exportXlsx;
